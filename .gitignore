@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# Experiment tracking
+mlruns/
+mlflow.db
+
+# Data caches (yfinance / alpaca pulls — never commit market data)
+data_cache/
+*.parquet
+*.feather
+
+# Generated reports
+reports/*.pdf
+reports/*.html
+
+# Tooling
+.ruff_cache/
+.mypy_cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,28 @@
+# Example experiment config.
+#
+# Reproducibility principle: an experiment must be fully reproducible from a
+# config like this one alone. This file is a placeholder skeleton — the fields
+# below will be consumed by the runners built in later phases. It is here in
+# Phase 0 only to fix the loading mechanism and show the intended shape.
+
+experiment:
+  name: example-baseline
+  description: Placeholder config to validate the loader. Not yet a real run.
+  seed: 42
+
+universe:
+  name: SPY            # one of: SP500, NASDAQ100, RUSSELL1000, SPY, QQQ, IWM
+  symbols: [SPY]
+
+data:
+  source: yfinance     # yfinance (historical) | alpaca (live/paper)
+  interval: 1d
+  in_sample: [2010-01-01, 2019-12-31]
+  out_of_sample: [2020-01-01, 2022-12-31]
+  walk_forward_start: 2023-01-01
+
+# Estimators, deviations, signals, and regimes are filled in by later phases.
+estimators: []
+deviation: zscore
+signal: {}
+regime: null
