@@ -29,8 +29,9 @@ reports/*.html
 reports/*.md
 reports/*.png
 reports/*.svg
-# ...except this committed example report.
+# ...except these committed example reports.
 !reports/universe_screened.md
+!reports/universe_validation.md
 
 # Tooling
 .ruff_cache/
