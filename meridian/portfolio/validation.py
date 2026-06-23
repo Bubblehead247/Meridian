@@ -22,7 +22,7 @@ from meridian.validation.bootstrap import block_bootstrap_sharpe
 from meridian.validation.correction import correct
 from meridian.validation.stats import sharpe, total_return
 from meridian.validation.walkforward import WalkForwardSpec, make_folds
-from meridian.portfolio.universe import common_index, run_universe_backtest
+from meridian.portfolio.universe import common_index, run_universe_backtest, union_index
 
 
 def _portfolio_mc_pvalue(
@@ -72,13 +72,18 @@ def validate_universe(
     method: str = "bh",
     periods_per_year: int = 252,
     seed: int = 0,
+    align: str = "union",
 ) -> pd.DataFrame:
     """Walk-forward validate each estimator as a universe-wide portfolio.
+
+    ``align="union"`` (default) uses the full calendar so staggered listings
+    (recent IPOs) are handled — a name simply sits inactive before it lists.
+    ``align="intersection"`` restricts to dates every symbol shares.
 
     Returns a ranked verdict table (same columns as the single-asset
     `validate`, plus `n_symbols`), sorted by out-of-sample Sharpe.
     """
-    idx = common_index(prices_by_symbol)
+    idx = union_index(prices_by_symbol) if align == "union" else common_index(prices_by_symbol)
     spec = spec or WalkForwardSpec()
     folds = make_folds(len(idx), spec)
 

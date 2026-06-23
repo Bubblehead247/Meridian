@@ -9,6 +9,7 @@ from meridian.portfolio.universe import (
     common_index,
     per_symbol_signals,
     run_universe_backtest,
+    union_index,
 )
 from meridian.portfolio.validation import validate_universe
 
@@ -21,6 +22,7 @@ __all__ = [
     "SIZING",
     "per_symbol_signals",
     "common_index",
+    "union_index",
     "run_universe_backtest",
     "validate_universe",
 ]

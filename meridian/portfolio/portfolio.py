@@ -57,7 +57,8 @@ def backtest_portfolio(
 
     gross = (held * returns).sum(axis=1)
     turnover = held.diff().abs().sum(axis=1)
-    turnover.iloc[0] = held.iloc[0].abs().sum()
+    if len(turnover):
+        turnover.iloc[0] = held.iloc[0].abs().sum()  # cost of entering from flat
     cost = turnover * (cost_bps / 1e4)
     net = gross - cost
 

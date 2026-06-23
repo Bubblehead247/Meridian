@@ -13,6 +13,7 @@ from meridian.portfolio import (
     inverse_vol,
     per_symbol_signals,
     run_universe_backtest,
+    union_index,
     validate_universe,
 )
 from meridian.signals import SignalConfig
@@ -100,6 +101,25 @@ def test_per_symbol_signals_shape():
     sigs = per_symbol_signals(uni, "sma", "zscore", SignalConfig(entry_threshold=1.0), window=20)
     assert set(sigs.columns) == set(uni)
     assert set(np.unique(sigs.fillna(0).to_numpy())) <= {-1.0, 0.0, 1.0}
+
+
+def test_union_index_handles_staggered_listings():
+    early = pd.Series(range(10), index=pd.RangeIndex(0, 10))
+    late = pd.Series(range(5), index=pd.RangeIndex(7, 12))  # "IPO" at bar 7
+    uni = {"old": early, "new": late}
+    assert list(union_index(uni)) == list(range(12))        # full span
+    assert list(common_index(uni)) == [7, 8, 9]             # intersection collapses
+
+
+def test_universe_backtest_runs_with_staggered_listings():
+    # A recent 'IPO' (shorter history) must not collapse the study window.
+    full = _reverting(400, seed=1)
+    ipo = _reverting(400, seed=2).iloc[300:]   # only the last 100 bars exist
+    res = run_universe_backtest(
+        {"OLD": full, "NEW": ipo}, "sma", "zscore", SignalConfig(entry_threshold=1.0), window=20
+    )
+    assert len(res.returns) == 400              # union calendar, not 100
+    assert res.gross_exposure.iloc[:50].sum() >= 0  # early bars: only OLD can be active
 
 
 def test_run_universe_backtest_produces_returns():

@@ -40,9 +40,24 @@ def per_symbol_signals(
 
 
 def common_index(prices_by_symbol: dict[str, pd.Series]) -> pd.Index:
-    """Intersection of all symbols' date indices (shared trading calendar)."""
+    """Intersection of all symbols' date indices (the *shared* calendar).
+
+    Note: with staggered listings (recent IPOs) this collapses to the newest
+    symbol's range. Prefer `union_index` for screened universes.
+    """
     return reduce(lambda a, b: a.intersection(b),
                   (s.index for s in prices_by_symbol.values()))
+
+
+def union_index(prices_by_symbol: dict[str, pd.Series]) -> pd.Index:
+    """Union of all symbols' date indices (full study calendar).
+
+    A symbol absent before its listing simply contributes no signal those bars
+    (masked to weight 0 downstream), so staggered IPOs/delistings are handled
+    without collapsing the study window.
+    """
+    idx = reduce(lambda a, b: a.union(b), (s.index for s in prices_by_symbol.values()))
+    return idx.sort_values()
 
 
 def run_universe_backtest(
@@ -56,6 +71,7 @@ def run_universe_backtest(
     cost_bps: float = 1.0,
     bars_by_symbol: dict[str, pd.DataFrame] | None = None,
     index: pd.Index | None = None,
+    align: str = "union",
 ) -> PortfolioResult:
     """Backtest one estimator across a universe into a single portfolio.
 
@@ -66,12 +82,17 @@ def run_universe_backtest(
         sizing: portfolio sizing scheme.
         cost_bps: turnover cost.
         bars_by_symbol: optional OHLC per symbol (for ``atr_norm``).
-        index: restrict to these dates (defaults to the shared calendar).
+        index: restrict to these dates (defaults to the study calendar).
+        align: "union" (full calendar, handles staggered listings) or
+            "intersection" (shared calendar only). Ignored if ``index`` given.
 
     Returns:
         A `PortfolioResult` for the whole universe.
     """
-    idx = index if index is not None else common_index(prices_by_symbol)
+    if index is not None:
+        idx = index
+    else:
+        idx = union_index(prices_by_symbol) if align == "union" else common_index(prices_by_symbol)
     signals = per_symbol_signals(
         prices_by_symbol, estimator, deviation, signal,
         window=window, bars_by_symbol=bars_by_symbol,
