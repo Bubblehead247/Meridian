@@ -1,0 +1,34 @@
+# Walk-forward validation of mean-reversion estimators on SPY.
+# Run: meridian validate configs/validation_spy.yaml
+
+experiment:
+  name: spy-validation
+  seed: 0
+
+data:
+  source: yfinance
+  symbols: [SPY]
+  start: 2010-01-01
+  end: 2024-12-31
+  field: adj_close        # which OHLCV column the estimators fit on
+
+estimators: [hull, ou, lsma, sma, ema, kalman, t3, ens_invvar]  # or "all"
+deviation: zscore
+window: 20
+cost_bps: 1.0
+
+signal:
+  entry_threshold: 1.5
+  exit_threshold: 0.0
+
+validation:
+  mode: anchored          # anchored (expanding) | rolling
+  min_train: 756          # ~3 trading years before first test window
+  test_span: 126          # ~6 months out-of-sample per fold
+  step: 126
+  n_boot: 1000
+  n_mc: 1000
+  correction: bh          # bh (Benjamini-Hochberg) | bonferroni
+
+report:
+  path: reports/spy_validation.md

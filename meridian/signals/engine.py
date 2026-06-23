@@ -91,6 +91,22 @@ class SignalState:
         self.blocked_long = False
         self.blocked_short = False
 
+    def to_dict(self) -> dict:
+        """Serialize the path-dependent state (for checkpoint/resume)."""
+        return {
+            "position": self.position,
+            "bars_held": self.bars_held,
+            "blocked_long": self.blocked_long,
+            "blocked_short": self.blocked_short,
+        }
+
+    def load_dict(self, d: dict) -> None:
+        """Restore state previously produced by `to_dict`."""
+        self.position = int(d["position"])
+        self.bars_held = int(d["bars_held"])
+        self.blocked_long = bool(d["blocked_long"])
+        self.blocked_short = bool(d["blocked_short"])
+
     def step(self, score: float) -> int:
         """Advance the state with one score and return the new position."""
         cfg = self.cfg

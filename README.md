@@ -20,6 +20,33 @@ pytest                            # run the test suite
 ruff check meridian tests         # lint
 ```
 
+## Running (CLI)
+
+Everything is driven from a YAML config — a run is reproducible from the config
+alone. Installing the package adds a `meridian` command:
+
+```bash
+meridian list estimators                       # 42 estimators (incl. ensembles)
+meridian validate configs/validation_spy.yaml  # walk-forward + significance -> report
+meridian backtest configs/validation_spy.yaml  # ranked table, no report file
+meridian paper    configs/paper_spy.yaml        # paper-trading dry-run
+```
+
+- **validate** runs anchored walk-forward over the config's estimators, applies
+  bootstrap + Monte-Carlo + multiple-testing correction, and writes a markdown
+  report (with the mandatory survivorship / multiple-testing disclosures) to
+  `report.path`.
+- **paper** warms the indicators on the first half of history and replays the
+  rest through a `SimulatedBroker`. For **live** paper trading, set
+  `broker.type: alpaca` in the config, export `ALPACA_API_KEY` /
+  `ALPACA_SECRET_KEY`, and drive `PaperTrader.on_bar` from a data feed (the loop
+  reuses the identical causal logic as the backtester, so live == backtest).
+  `PaperTrader.save_checkpoint` / `load_checkpoint` persist the signal state so a
+  session can resume after a restart.
+
+See `configs/validation_spy.yaml` and `configs/paper_spy.yaml` for the full
+schema.
+
 ## Layout
 
 | Path | Purpose |
@@ -59,6 +86,15 @@ ruff check meridian tests         # lint
 
 ## Development phases
 
-Work proceeds in phases (0–10). Each phase ends by writing a
-`phase_N_summary.md` that is the primary input for the next phase. This repo is
-currently at **Phase 0 (infrastructure)** — see `phase_0_summary.md`.
+Work proceeded in phases (0–10), each ending with a `phase_N_summary.md`. **All
+ten phases are complete**: infrastructure, data engineering, the 38-estimator
+library (+ ensembles), deviation metrics, the signal engine and backtester,
+regime classifiers, the validation engine (walk-forward + bootstrap +
+Monte-Carlo + multiple-testing correction), analytics and reporting, the adaptive
+meta-model, paper-trading deployment, and this config-driven packaging. See the
+`phase_N_summary.md` files for each phase's contract and limitations.
+
+**Headline research finding:** on SPY, no fair-value estimator shows a
+statistically significant mean-reversion edge out-of-sample once corrected for
+multiple testing — the honest result the platform is built to establish rather
+than obscure.

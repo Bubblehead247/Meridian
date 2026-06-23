@@ -140,6 +140,32 @@ class PaperTrader:
             )
         return self.log_frame()
 
+    # --- state persistence ------------------------------------------------
+
+    def save_checkpoint(self, path) -> None:
+        """Persist the path-dependent signal state to JSON.
+
+        Only the signal state machine is saved — the estimator/deviation/regime
+        are re-derived by `warm_up` on the same history (reproducible from data),
+        and live positions live at the broker. This is the minimal state needed
+        to resume a session without double-counting trades.
+        """
+        import json
+        from pathlib import Path
+
+        payload = {"symbol": self.symbol, "signal_state": self._state.to_dict()}
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def load_checkpoint(self, path) -> None:
+        """Restore signal state from a JSON checkpoint (after `warm_up`)."""
+        import json
+        from pathlib import Path
+
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        self._state.load_dict(payload["signal_state"])
+
     def log_frame(self) -> pd.DataFrame:
         """The decision log as a DataFrame."""
         return pd.DataFrame(

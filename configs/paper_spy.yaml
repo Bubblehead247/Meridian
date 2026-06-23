@@ -1,0 +1,32 @@
+# Paper-trading dry-run on SPY: warm on the first half of history, replay the
+# rest through a simulated broker.
+# Run: meridian paper configs/paper_spy.yaml
+#
+# For live paper trading, set broker.type: alpaca and supply credentials via
+# ALPACA_API_KEY / ALPACA_SECRET_KEY, then drive trader.on_bar from a feed.
+
+data:
+  source: yfinance
+  symbols: [SPY]
+  start: 2022-01-01
+  end: 2024-06-01
+  field: adj_close
+
+estimator: ou            # any registered estimator or ensemble (e.g. ens_invvar)
+deviation: zscore
+window: 20
+position_size: 100       # shares per unit signal
+
+signal:
+  entry_threshold: 1.5
+  exit_threshold: 0.0
+
+# Optional regime gate (omit or set null to disable):
+regime: null             # e.g. trend
+allowed_regimes: []      # e.g. [range]
+
+broker:
+  type: simulated        # simulated | alpaca
+  cash: 100000
+  cost_bps: 1.0
+  paper: true            # (alpaca only) use the paper endpoint
