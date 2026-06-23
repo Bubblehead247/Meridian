@@ -1,0 +1,148 @@
+"""Tests for the universe-wide portfolio study."""
+
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from meridian.portfolio import (
+    backtest_portfolio,
+    common_index,
+    equal_weight,
+    inverse_vol,
+    per_symbol_signals,
+    run_universe_backtest,
+    validate_universe,
+)
+from meridian.signals import SignalConfig
+from meridian.validation import WalkForwardSpec
+from meridian.validation.stats import sharpe
+
+
+def _reverting(n=600, seed=0, level=100.0) -> pd.Series:
+    rng = np.random.default_rng(seed)
+    x = np.zeros(n)
+    for i in range(1, n):
+        x[i] = 0.8 * x[i - 1] + rng.normal(0, 1)
+    return pd.Series(level + x, index=pd.RangeIndex(n))
+
+
+def _universe(k=6, n=600) -> dict[str, pd.Series]:
+    return {f"S{i}": _reverting(n, seed=i) for i in range(k)}
+
+
+# --- sizing ---------------------------------------------------------------
+
+def test_equal_weight_splits_active_names():
+    sig = pd.DataFrame({"A": [1, 0], "B": [1, 0], "C": [-1, 0]})
+    w = equal_weight(sig)
+    assert list(w.iloc[0]) == pytest.approx([1 / 3, 1 / 3, -1 / 3])
+    assert list(w.iloc[1]) == [0.0, 0.0, 0.0]  # flat row
+
+
+def test_equal_weight_gross_is_one_when_active():
+    sig = pd.DataFrame({"A": [1, 1], "B": [-1, 0]})
+    w = equal_weight(sig)
+    assert w.abs().sum(axis=1).iloc[0] == pytest.approx(1.0)
+
+
+def test_inverse_vol_normalizes_and_favors_quiet_names():
+    rng = np.random.default_rng(0)
+    n = 100
+    returns = pd.DataFrame({
+        "quiet": rng.normal(0, 0.005, n),
+        "wild": rng.normal(0, 0.05, n),
+    })
+    sig = pd.DataFrame({"quiet": np.ones(n), "wild": np.ones(n)})
+    w = inverse_vol(sig, returns, lookback=20)
+    last = w.iloc[-1]
+    assert last.abs().sum() == pytest.approx(1.0)
+    assert last["quiet"] > last["wild"]  # quieter name gets more capital
+
+
+# --- portfolio backtest ---------------------------------------------------
+
+def test_portfolio_no_lookahead():
+    prices = pd.DataFrame({"A": [100.0, 110.0, 121.0], "B": [50.0, 55.0, 60.5]})
+    signals = pd.DataFrame({"A": [0, 0, 1], "B": [0, 0, 1]})  # only last bar active
+    res = backtest_portfolio(signals, prices, cost_bps=0.0)
+    assert res.equity.iloc[-1] == pytest.approx(1.0)  # lagged weight earns nothing
+
+
+def test_portfolio_earns_blended_return():
+    prices = pd.DataFrame({"A": [100.0, 110.0], "B": [100.0, 120.0]})
+    signals = pd.DataFrame({"A": [1, 1], "B": [1, 1]})
+    res = backtest_portfolio(signals, prices, cost_bps=0.0)
+    # held=[0.5,0.5] from bar0; bar1 return = 0.5*10% + 0.5*20% = 15%
+    assert res.returns.iloc[1] == pytest.approx(0.15)
+
+
+def test_portfolio_costs_reduce_return():
+    prices = pd.DataFrame({"A": [100.0, 100.0, 100.0], "B": [100.0, 100.0, 100.0]})
+    signals = pd.DataFrame({"A": [1, 1, 1], "B": [1, 1, 1]})
+    free = backtest_portfolio(signals, prices, cost_bps=0.0).equity.iloc[-1]
+    costed = backtest_portfolio(signals, prices, cost_bps=10.0).equity.iloc[-1]
+    assert costed < free
+
+
+# --- universe runner ------------------------------------------------------
+
+def test_common_index_is_intersection():
+    a = pd.Series(range(5), index=pd.RangeIndex(0, 5))
+    b = pd.Series(range(5), index=pd.RangeIndex(2, 7))
+    idx = common_index({"a": a, "b": b})
+    assert list(idx) == [2, 3, 4]
+
+
+def test_per_symbol_signals_shape():
+    uni = _universe(k=3, n=300)
+    sigs = per_symbol_signals(uni, "sma", "zscore", SignalConfig(entry_threshold=1.0), window=20)
+    assert set(sigs.columns) == set(uni)
+    assert set(np.unique(sigs.fillna(0).to_numpy())) <= {-1.0, 0.0, 1.0}
+
+
+def test_run_universe_backtest_produces_returns():
+    uni = _universe(k=5)
+    res = run_universe_backtest(uni, "ou", "zscore", SignalConfig(entry_threshold=1.0), window=20)
+    assert len(res.returns) == len(common_index(uni))
+    assert res.meta["n_symbols"] == 5
+    assert (res.gross_exposure <= 1.0 + 1e-9).all()
+
+
+# --- the payoff: more symbols -> tighter Sharpe estimate ------------------
+
+def test_portfolio_lifts_sharpe_above_any_single_name():
+    """Diversifying an edge across many uncorrelated names raises the Sharpe
+    toward ~SR*sqrt(K) — the statistical-power gain motivating the universe
+    study. (The Sharpe *CI width* does not shrink: it tracks the number of
+    time periods, not cross-sectional breadth — so power comes from a higher
+    point estimate, not a narrower interval.)"""
+    uni = _universe(k=12, n=800)
+    sig = SignalConfig(entry_threshold=1.0)
+
+    port_sharpe = sharpe(run_universe_backtest(uni, "ou", "zscore", sig, window=20).returns)
+    single_sharpes = [
+        sharpe(run_universe_backtest({k: uni[k]}, "ou", "zscore", sig, window=20).returns)
+        for k in uni
+    ]
+    # The portfolio beats even the best single name (diversification benefit).
+    assert port_sharpe > max(single_sharpes)
+
+
+# --- universe validation --------------------------------------------------
+
+def test_validate_universe_verdict_table():
+    uni = _universe(k=6, n=700)
+    spec = WalkForwardSpec(mode="anchored", min_train=250, test_span=100, step=100)
+    df = validate_universe(
+        uni, ["sma", "ou", "ens_invvar"], "zscore", SignalConfig(entry_threshold=1.0),
+        spec=spec, window=20, n_boot=150, n_mc=120, block=10, seed=0,
+    )
+    for col in ["estimator", "oos_sharpe", "boot_ci_low", "mc_pvalue", "q_value",
+                "significant", "n_symbols"]:
+        assert col in df.columns
+    assert set(df["estimator"]) == {"sma", "ou", "ens_invvar"}
+    assert df["significant"].dtype == bool
+    assert (df["n_symbols"] == 6).all()
+    assert df["oos_sharpe"].is_monotonic_decreasing

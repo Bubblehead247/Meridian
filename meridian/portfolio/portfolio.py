@@ -1,0 +1,72 @@
+"""Cross-sectional portfolio backtester.
+
+Combines per-symbol signals into one portfolio return stream: size the signals
+into weights, lag them one bar (no look-ahead), apply them to each symbol's next
+return, and net out turnover costs. The output is a single return series that
+plugs into the same analytics and validation machinery as a single-asset
+backtest — but built from many names, so idiosyncratic noise averages out.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import pandas as pd
+
+from meridian.portfolio.sizing import get_sizing
+
+
+@dataclass
+class PortfolioResult:
+    """Outcome of a cross-sectional portfolio backtest."""
+
+    returns: pd.Series          # per-bar net portfolio return
+    equity: pd.Series           # cumulative net equity (starts at 1.0)
+    weights: pd.Series | pd.DataFrame  # held weights (already lagged), per symbol
+    gross_exposure: pd.Series   # sum of |weight| held each bar
+    returns_by_symbol: pd.DataFrame  # per-symbol returns (for Monte-Carlo)
+    meta: dict = field(default_factory=dict)
+
+
+def backtest_portfolio(
+    signals: pd.DataFrame,
+    prices: pd.DataFrame,
+    *,
+    sizing: str = "equal_weight",
+    cost_bps: float = 1.0,
+    lookback: int = 20,
+) -> PortfolioResult:
+    """Backtest a cross-sectional portfolio.
+
+    Args:
+        signals: Rows = dates, columns = symbols, values {-1, 0, +1} decided at
+            each bar's close.
+        prices: Same shape; per-symbol prices (use adjusted close).
+        sizing: Sizing scheme name (`equal_weight` or `inverse_vol`).
+        cost_bps: Flat cost in bps charged on portfolio turnover.
+        lookback: Lookback for vol-based sizing.
+
+    Returns:
+        A `PortfolioResult` whose `returns` is the net portfolio return series.
+    """
+    prices = prices.reindex(columns=signals.columns)
+    returns = prices.pct_change().fillna(0.0)
+
+    weights = get_sizing(sizing)(signals, returns, lookback)
+    held = weights.shift(1).fillna(0.0)  # lag: weight decided at t earns t->t+1
+
+    gross = (held * returns).sum(axis=1)
+    turnover = held.diff().abs().sum(axis=1)
+    turnover.iloc[0] = held.iloc[0].abs().sum()
+    cost = turnover * (cost_bps / 1e4)
+    net = gross - cost
+
+    equity = (1.0 + net).cumprod()
+    return PortfolioResult(
+        returns=net,
+        equity=equity,
+        weights=held,
+        gross_exposure=held.abs().sum(axis=1),
+        returns_by_symbol=returns,
+        meta={"sizing": sizing, "cost_bps": cost_bps, "n_symbols": signals.shape[1]},
+    )
