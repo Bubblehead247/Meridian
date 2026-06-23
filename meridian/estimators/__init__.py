@@ -17,6 +17,13 @@ from meridian.estimators import (  # noqa: F401  (side-effect imports)
     robust,
     stochastic,
 )
+
+# Ensembles import the registry (populated above) and register named ensembles.
+from meridian.estimators.ensemble import (  # noqa: F401
+    EnsembleEstimator,
+    make_ensemble,
+    register_ensemble,
+)
 from meridian.estimators.registry import (
     all_estimators,
     create,
@@ -32,4 +39,7 @@ __all__ = [
     "get_estimator",
     "list_estimators",
     "all_estimators",
+    "EnsembleEstimator",
+    "make_ensemble",
+    "register_ensemble",
 ]
