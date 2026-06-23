@@ -15,6 +15,7 @@ dependencies = [
     # Data
     "yfinance>=0.2.40",
     "alpaca-py>=0.20",
+    "financedatabase>=2.4",   # static symbol metadata for universe screening
     # Numerics
     "numpy>=1.26",
     "pandas>=2.2",

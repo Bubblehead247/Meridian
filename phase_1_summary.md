@@ -56,15 +56,39 @@ source's native column names.
   `{"in_sample", "out_of_sample", "walk_forward"}`. This is the single guard
   against training on test data.
 
-### 6. Tests — `tests/test_data.py`
-15 offline tests: schema rename/validation, both caches' round-trip + miss,
-loader download/cache/slice + cache-hit-skips-download + empty-raises +
-universe skip-bad, ETF/unknown/index-fetch-then-cache + symbol normalization,
-split partitioning + non-overlap + config parsing + overlap rejection.
-**Full suite: 24 passed** (9 Phase 0 + 15 Phase 1).
+### 6. Metadata screening — `meridian/data/screener.py`
+`EquityScreener` wraps **FinanceDatabase** (JerBouma; 300k+ symbols with
+sector / industry / country / exchange / market-cap / `delisted` metadata that
+yfinance lacks). It builds *custom* universes by attribute, complementing the
+fixed ETF and index universes.
+- `screen(**filters)` -> metadata frame (passthrough to FinanceDatabase
+  `select`: `country`, `sector`, `industry`, `exchange`, `market`,
+  `market_cap`, `only_primary_listing`, `exclude_delisted`, ...).
+- `build_universe(name, **filters)` -> `Universe`; **defaults
+  `only_primary_listing=True`** so foreign cross-listings are dropped, and
+  yfinance-normalizes symbols (`BRK/B` -> `BRK-B`), de-duped, order-preserving.
+- `metadata(symbols)` -> metadata rows aligned 1:1 to the input (unknown
+  symbols become NaN rows) — for later sector/country grouping.
+- **Symbol normalization differs from `universe.py`**: here only `/` -> `-`;
+  dots are exchange suffixes and are left intact (the opposite rule).
+- The FinanceDatabase handle is created lazily and is injectable, so import and
+  tests never trigger its dataset load.
 
-**Live check:** `load_ohlcv("SPY", "2024-01-01", "2024-02-01")` returned 22
-correctly-shaped bars from the real yfinance API.
+### 7. Tests — `tests/test_data.py`, `tests/test_screener.py`
+22 offline tests. Data layer: schema rename/validation, both caches'
+round-trip + miss, loader download/cache/slice + cache-hit-skips-download +
+empty-raises + universe skip-bad, ETF/unknown/index-fetch-then-cache + symbol
+normalization, split partitioning + non-overlap + config parsing + overlap
+rejection. Screener (against an injected fake): yf-symbol normalization,
+filter passthrough, primary-only + yf-safe build, keep-all-listings, delisted
+exclude/include, metadata alignment.
+**Full suite: 31 passed** (9 Phase 0 + 22 Phase 1).
+
+**Live checks:** `load_ohlcv("SPY", "2024-01-01", "2024-02-01")` returned 22
+correctly-shaped bars from the real yfinance API;
+`EquityScreener().build_universe(country="United States",
+sector="Information Technology", market_cap="Large Cap")` returned 108 clean US
+symbols (no slashes/dot-suffixes) against the real FinanceDatabase.
 
 ---
 
@@ -77,6 +101,7 @@ from meridian.data import (
     get_universe,      # (name) -> Universe(name, symbols)
     split, SplitSpec,  # split(series_or_frame) -> {in_sample, out_of_sample, walk_forward}
     normalize_ohlcv, OHLCV_COLUMNS,
+    EquityScreener,    # .build_universe(name, **filters) / .metadata(symbols) via FinanceDatabase
 )
 ```
 
@@ -91,7 +116,14 @@ a price **Series** — typically the `close` or `adj_close` column.
 - **Survivorship bias (unchanged, important).** Index constituents are fetched
   as of *today*, and yfinance omits delisted tickers — so any index-universe
   backtest is survivorship-biased on two counts. Must be documented in every
-  report.
+  report. FinanceDatabase *does* carry a `delisted` flag (so delisted names can
+  be screened back in), but that does not restore yfinance's missing delisted
+  price history — it only widens the symbol list.
+- **FinanceDatabase loads a large static dataset** on first use (lazy) and may
+  fetch it from GitHub; treat it as a metadata source, not a price source.
+  Symbol formats are messy (slash share-classes, foreign cross-listings) —
+  `build_universe` defaults to primary listings + yfinance normalization to
+  keep results clean.
 - **Wikipedia-sourced constituents** can change format; the fetcher scans all
   page tables for the expected symbol column and raises if none matches. Not
   yet pinned to a date/snapshot.
