@@ -23,9 +23,12 @@ data_cache/
 *.parquet
 *.feather
 
-# Generated reports
+# Generated reports (reports/ is an output directory)
 reports/*.pdf
 reports/*.html
+reports/*.md
+reports/*.png
+reports/*.svg
 
 # Tooling
 .ruff_cache/
