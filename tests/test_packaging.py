@@ -110,6 +110,49 @@ def test_cli_validate(tmp_path, monkeypatch, capsys):
     assert (tmp_path / "r.md").exists()
 
 
+def _universe(k=5, n=600) -> dict:
+    out = {}
+    for i in range(k):
+        rng = np.random.default_rng(i)
+        x = np.zeros(n)
+        for t in range(1, n):
+            x[t] = 0.8 * x[t - 1] + rng.normal(0, 1)
+        out[f"S{i}"] = pd.Series(100 + x, index=pd.RangeIndex(n))
+    return out
+
+
+def _univ_cfg(tmp_path) -> dict:
+    cfg = _cfg(tmp_path)
+    cfg["estimators"] = ["sma", "ou"]
+    cfg["sizing"] = "equal_weight"
+    cfg["validation"] = {"mode": "anchored", "min_train": 250, "test_span": 100,
+                         "step": 100, "n_boot": 100, "n_mc": 80, "correction": "bh"}
+    cfg["report"]["path"] = str(tmp_path / "u.md")
+    return cfg
+
+
+def test_run_universe_validation(tmp_path):
+    uni = _universe()
+    table = runner.run_universe_validation(_univ_cfg(tmp_path), uni)
+    assert set(table["estimator"]) == {"sma", "ou"}
+    assert (table["n_symbols"] == 5).all()
+
+
+def test_cli_universe(tmp_path, monkeypatch, capsys):
+    uni = _universe()
+    bars = {s: pd.DataFrame({"high": p + 1, "low": p - 1, "close": p}) for s, p in uni.items()}
+    monkeypatch.setattr(runner, "load_universe_prices", lambda cfg, cache=None: (uni, bars))
+    cfg_path = tmp_path / "u.yaml"
+    cfg_path.write_text(yaml.safe_dump(_univ_cfg(tmp_path)), encoding="utf-8")
+
+    rc = main(["universe", str(cfg_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Universe: 5 symbols" in out
+    assert "Significant after correction" in out
+    assert (tmp_path / "u.md").exists()
+
+
 def test_cli_paper(tmp_path, monkeypatch, capsys):
     px = _mr()
     monkeypatch.setattr(runner, "load_prices", lambda cfg, cache=None: (px, _bars(px)))

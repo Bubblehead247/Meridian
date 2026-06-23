@@ -41,6 +41,18 @@ def _cmd_backtest(args) -> int:
     return 0
 
 
+def _cmd_universe(args) -> int:
+    cfg = runner.load_experiment(args.config)
+    prices, bars = runner.load_universe_prices(cfg)
+    table, path = runner.run_universe_validation_report(cfg, prices, bars)
+    sig = table[table["significant"]]["estimator"].tolist()
+    print(table.to_string(index=False))
+    print(f"\nUniverse: {len(prices)} symbols")
+    print(f"Significant after correction: {sig or 'NONE'}")
+    print(f"Report written to: {path}")
+    return 0
+
+
 def _cmd_paper(args) -> int:
     cfg = runner.load_experiment(args.config)
     prices, bars = runner.load_prices(cfg)
@@ -72,6 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     for name, fn, help_ in [
         ("validate", _cmd_validate, "Walk-forward validate estimators from a config and write a report"),
         ("backtest", _cmd_backtest, "Run validation and print the ranked table (no report)"),
+        ("universe", _cmd_universe, "Cross-sectional universe-wide validation across many symbols"),
         ("paper", _cmd_paper, "Paper-trade dry-run: warm on history, replay the rest"),
     ]:
         p = sub.add_parser(name, help=help_)

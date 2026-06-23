@@ -1,0 +1,41 @@
+# Cross-sectional universe-wide validation across many large-cap names.
+# Run: meridian universe configs/universe_largecap.yaml
+#
+# Each estimator is applied identically to every symbol, the per-symbol signals
+# are combined into one portfolio, and that portfolio's out-of-sample returns are
+# validated (walk-forward + bootstrap + Monte-Carlo + multiple-testing
+# correction). Averaging over many names is the highest-power test of an edge.
+
+experiment:
+  name: largecap-universe
+  seed: 0
+
+data:
+  source: yfinance
+  symbols: [AAPL, MSFT, JPM, XOM, JNJ, PG, KO, WMT, HD, CVX,
+            PFE, CSCO, INTC, VZ, MRK, PEP, ORCL, IBM, MCD, BA]
+  start: 2010-01-01
+  end: 2024-12-31
+  field: adj_close
+
+estimators: [hull, ou, lsma, sma, ema, kalman, ens_invvar]   # or "all"
+deviation: zscore
+sizing: equal_weight      # equal_weight | inverse_vol
+window: 20
+cost_bps: 1.0
+
+signal:
+  entry_threshold: 1.5
+  exit_threshold: 0.0
+
+validation:
+  mode: anchored
+  min_train: 756
+  test_span: 126
+  step: 126
+  n_boot: 1000
+  n_mc: 500
+  correction: bh
+
+report:
+  path: reports/universe_validation.md

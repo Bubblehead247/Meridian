@@ -159,6 +159,74 @@ def run_paper_dry_run(
     return log, summary
 
 
+def load_universe_prices(cfg: dict, cache=None) -> tuple[dict, dict]:
+    """Load OHLCV for every symbol in the config (network).
+
+    Returns ``(prices_by_symbol, bars_by_symbol)`` for the universe-wide study.
+    """
+    from meridian.data import load_universe
+
+    data = cfg.get("data", {})
+    symbols = data.get("symbols") or [data.get("symbol", "SPY")]
+    frames = load_universe(
+        symbols, start=data.get("start"), end=data.get("end"),
+        interval=data.get("interval", "1d"), cache=cache,
+    )
+    field = data.get("field", "adj_close")
+    prices = {s: f[field] for s, f in frames.items()}
+    return prices, dict(frames)
+
+
+def run_universe_validation(
+    cfg: dict, prices_by_symbol: dict, bars_by_symbol: dict | None = None
+) -> pd.DataFrame:
+    """Run the cross-sectional universe validation described by ``cfg``."""
+    from meridian.portfolio import validate_universe
+
+    v = cfg.get("validation", {})
+    return validate_universe(
+        prices_by_symbol,
+        resolve_estimators(cfg),
+        cfg.get("deviation", "zscore"),
+        build_signal(cfg),
+        sizing=cfg.get("sizing", "equal_weight"),
+        spec=build_wfo(cfg),
+        window=int(cfg.get("window", 20)),
+        cost_bps=float(cfg.get("cost_bps", 1.0)),
+        bars_by_symbol=bars_by_symbol,
+        n_boot=int(v.get("n_boot", 2000)),
+        n_mc=int(v.get("n_mc", 2000)),
+        block=int(v.get("block", 20)),
+        method=v.get("correction", "bh"),
+        seed=int(cfg.get("experiment", {}).get("seed", 0)),
+    )
+
+
+def run_universe_validation_report(
+    cfg: dict, prices_by_symbol: dict, bars_by_symbol: dict | None = None
+) -> tuple[pd.DataFrame, str]:
+    """Run universe validation and write a markdown report; return (table, path)."""
+    table = run_universe_validation(cfg, prices_by_symbol, bars_by_symbol)
+    data = cfg.get("data", {})
+    meta = {
+        "symbols": f"{len(prices_by_symbol)} names",
+        "start": data.get("start"),
+        "end": data.get("end"),
+        "deviation": cfg.get("deviation", "zscore"),
+        "sizing": cfg.get("sizing", "equal_weight"),
+        "window": cfg.get("window", 20),
+        "cost_bps": cfg.get("cost_bps", 1.0),
+        "wfo": build_wfo(cfg).mode,
+        "correction": cfg.get("validation", {}).get("correction", "bh"),
+    }
+    md = build_validation_report(
+        table, meta, title="Meridian — Universe-Wide Mean-Reversion Validation"
+    )
+    out = cfg.get("report", {}).get("path", "reports/universe_validation.md")
+    write_report(out, md)
+    return table, out
+
+
 def load_experiment(path: str | Path) -> dict:
     """Load a YAML experiment config (thin wrapper over `config.load_config`)."""
     return load_config(path)

@@ -26,16 +26,21 @@ Everything is driven from a YAML config — a run is reproducible from the confi
 alone. Installing the package adds a `meridian` command:
 
 ```bash
-meridian list estimators                       # 42 estimators (incl. ensembles)
-meridian validate configs/validation_spy.yaml  # walk-forward + significance -> report
-meridian backtest configs/validation_spy.yaml  # ranked table, no report file
-meridian paper    configs/paper_spy.yaml        # paper-trading dry-run
+meridian list estimators                        # 42 estimators (incl. ensembles)
+meridian validate configs/validation_spy.yaml   # walk-forward + significance -> report
+meridian backtest configs/validation_spy.yaml   # ranked table, no report file
+meridian universe configs/universe_largecap.yaml # cross-sectional, many symbols -> report
+meridian paper    configs/paper_spy.yaml         # paper-trading dry-run
 ```
 
 - **validate** runs anchored walk-forward over the config's estimators, applies
   bootstrap + Monte-Carlo + multiple-testing correction, and writes a markdown
   report (with the mandatory survivorship / multiple-testing disclosures) to
   `report.path`.
+- **universe** runs the same validation cross-sectionally: each estimator is
+  applied to every symbol in `data.symbols`, combined into one portfolio
+  (`sizing: equal_weight | inverse_vol`), and the portfolio's out-of-sample
+  returns are validated — the highest-power test of an edge.
 - **paper** warms the indicators on the first half of history and replays the
   rest through a `SimulatedBroker`. For **live** paper trading, set
   `broker.type: alpaca` in the config, export `ALPACA_API_KEY` /
