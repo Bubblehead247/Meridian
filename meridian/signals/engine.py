@@ -72,6 +72,64 @@ class SignalConfig:
         )
 
 
+class SignalState:
+    """The mean-reversion state machine for one instrument.
+
+    Holds the running position and processes one score at a time via `step`.
+    Both the backtester (`generate_positions`) and the live paper trader drive
+    this same class, so a live session and a backtest can never diverge in their
+    trade logic — they share this exact code.
+    """
+
+    def __init__(self, config: SignalConfig | None = None):
+        self.cfg = config or SignalConfig()
+        self.position = 0
+        self.bars_held = 0
+        # After a stop-out, block re-entry on that side until the score reverts
+        # to neutral — otherwise a still-extreme score would re-enter next bar
+        # and the stop would be meaningless.
+        self.blocked_long = False
+        self.blocked_short = False
+
+    def step(self, score: float) -> int:
+        """Advance the state with one score and return the new position."""
+        cfg = self.cfg
+        s = float(score)
+        if math.isnan(s):
+            if self.position != 0:
+                self.bars_held += 1
+            return self.position
+
+        if self.blocked_long and s >= cfg.exit_threshold:
+            self.blocked_long = False
+        if self.blocked_short and s <= -cfg.exit_threshold:
+            self.blocked_short = False
+
+        if self.position == 0:
+            if s <= -cfg.entry_threshold and not self.blocked_long:
+                self.position, self.bars_held = 1, 0
+            elif cfg.allow_short and s >= cfg.entry_threshold and not self.blocked_short:
+                self.position, self.bars_held = -1, 0
+        elif self.position == 1:
+            self.bars_held += 1
+            if cfg.stop_threshold is not None and s <= -cfg.stop_threshold:
+                self.position, self.bars_held, self.blocked_long = 0, 0, True
+            elif s >= cfg.exit_threshold or (
+                cfg.max_holding is not None and self.bars_held >= cfg.max_holding
+            ):
+                self.position, self.bars_held = 0, 0
+        else:  # position == -1
+            self.bars_held += 1
+            if cfg.stop_threshold is not None and s >= cfg.stop_threshold:
+                self.position, self.bars_held, self.blocked_short = 0, 0, True
+            elif s <= -cfg.exit_threshold or (
+                cfg.max_holding is not None and self.bars_held >= cfg.max_holding
+            ):
+                self.position, self.bars_held = 0, 0
+
+        return self.position
+
+
 def generate_positions(scores: pd.Series, config: SignalConfig | None = None) -> pd.Series:
     """Turn a stream of deviation scores into a position path of {-1, 0, +1}.
 
@@ -88,51 +146,6 @@ def generate_positions(scores: pd.Series, config: SignalConfig | None = None) ->
         position at bar t reflects the decision made from the score at bar t;
         the backtester lags it one bar before applying returns.
     """
-    cfg = config or SignalConfig()
-    pos = 0
-    bars_held = 0
-    # After a stop-out, block re-entry on that side until the score reverts to
-    # neutral — otherwise a still-extreme score would re-enter next bar and the
-    # stop would be meaningless.
-    blocked_long = False
-    blocked_short = False
-    out: list[int] = []
-
-    for s in scores.to_numpy(dtype=float):
-        if math.isnan(s):
-            if pos != 0:
-                bars_held += 1
-            out.append(pos)
-            continue
-
-        # Clear a block once the score has reverted back through the exit level.
-        if blocked_long and s >= cfg.exit_threshold:
-            blocked_long = False
-        if blocked_short and s <= -cfg.exit_threshold:
-            blocked_short = False
-
-        if pos == 0:
-            if s <= -cfg.entry_threshold and not blocked_long:
-                pos, bars_held = 1, 0
-            elif cfg.allow_short and s >= cfg.entry_threshold and not blocked_short:
-                pos, bars_held = -1, 0
-        elif pos == 1:
-            bars_held += 1
-            if cfg.stop_threshold is not None and s <= -cfg.stop_threshold:
-                pos, bars_held, blocked_long = 0, 0, True
-            elif s >= cfg.exit_threshold or (
-                cfg.max_holding is not None and bars_held >= cfg.max_holding
-            ):
-                pos, bars_held = 0, 0
-        else:  # pos == -1
-            bars_held += 1
-            if cfg.stop_threshold is not None and s >= cfg.stop_threshold:
-                pos, bars_held, blocked_short = 0, 0, True
-            elif s <= -cfg.exit_threshold or (
-                cfg.max_holding is not None and bars_held >= cfg.max_holding
-            ):
-                pos, bars_held = 0, 0
-
-        out.append(pos)
-
+    state = SignalState(config)
+    out = [state.step(s) for s in scores.to_numpy(dtype=float)]
     return pd.Series(out, index=scores.index, name="position", dtype=int)

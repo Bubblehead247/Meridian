@@ -14,10 +14,11 @@ from meridian.signals.backtest import (
     run_backtest,
     sweep,
 )
-from meridian.signals.engine import SignalConfig, generate_positions
+from meridian.signals.engine import SignalConfig, SignalState, generate_positions
 
 __all__ = [
     "SignalConfig",
+    "SignalState",
     "generate_positions",
     "BacktestResult",
     "backtest",
