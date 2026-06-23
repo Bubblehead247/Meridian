@@ -40,7 +40,10 @@ meridian paper    configs/paper_spy.yaml         # paper-trading dry-run
 - **universe** runs the same validation cross-sectionally: each estimator is
   applied to every symbol in `data.symbols`, combined into one portfolio
   (`sizing: equal_weight | inverse_vol`), and the portfolio's out-of-sample
-  returns are validated — the highest-power test of an edge.
+  returns are validated — the highest-power test of an edge. Instead of a fixed
+  `data.symbols` list, a `data.screen` block selects the universe by
+  FinanceDatabase metadata (country / sector / market_cap, with an optional
+  `limit`) — see `configs/universe_screened.yaml`.
 - **paper** warms the indicators on the first half of history and replays the
   rest through a `SimulatedBroker`. For **live** paper trading, set
   `broker.type: alpaca` in the config, export `ALPACA_API_KEY` /

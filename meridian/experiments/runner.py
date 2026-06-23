@@ -51,6 +51,34 @@ def resolve_estimators(cfg: dict) -> list[str]:
     return list(spec)
 
 
+def resolve_symbols(cfg: dict, screener=None) -> list[str]:
+    """Resolve the trading symbols from a config.
+
+    If ``data.screen`` is present, build the universe by screening
+    FinanceDatabase metadata (e.g. country / sector / market_cap); otherwise use
+    the explicit ``data.symbols`` (or single ``data.symbol``). The optional
+    ``limit`` caps the screened list. ``screener`` may be injected for testing.
+    """
+    data = cfg.get("data", {})
+    screen = data.get("screen")
+    if screen:
+        if screener is None:
+            from meridian.data import EquityScreener
+
+            screener = EquityScreener()
+        filters = dict(screen)
+        limit = filters.pop("limit", None)
+        opts = {k: filters.pop(k) for k in ("only_primary_listing", "yfinance_safe") if k in filters}
+        universe = screener.build_universe("screened", **opts, **filters)
+        symbols = list(universe.symbols)
+        if limit is not None:
+            symbols = symbols[: int(limit)]
+        if not symbols:
+            raise ValueError("config data.screen matched no symbols")
+        return symbols
+    return data.get("symbols") or [data.get("symbol", "SPY")]
+
+
 def build_broker(cfg: dict):
     """Construct the broker named in the config's ``broker`` section."""
     b = cfg.get("broker", {"type": "simulated"})
@@ -70,8 +98,7 @@ def load_prices(cfg: dict, cache=None) -> tuple[pd.Series, pd.DataFrame]:
     from meridian.data import load_ohlcv
 
     data = cfg.get("data", {})
-    symbols = data.get("symbols") or [data.get("symbol", "SPY")]
-    symbol = symbols[0]
+    symbol = resolve_symbols(cfg)[0]
     bars = load_ohlcv(
         symbol, start=data.get("start"), end=data.get("end"),
         interval=data.get("interval", "1d"), cache=cache,
@@ -167,7 +194,7 @@ def load_universe_prices(cfg: dict, cache=None) -> tuple[dict, dict]:
     from meridian.data import load_universe
 
     data = cfg.get("data", {})
-    symbols = data.get("symbols") or [data.get("symbol", "SPY")]
+    symbols = resolve_symbols(cfg)
     frames = load_universe(
         symbols, start=data.get("start"), end=data.get("end"),
         interval=data.get("interval", "1d"), cache=cache,

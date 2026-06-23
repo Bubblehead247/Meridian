@@ -1,0 +1,42 @@
+# Universe-wide validation over a *screened* universe — symbols are selected by
+# FinanceDatabase metadata instead of being listed explicitly.
+# Run: meridian universe configs/universe_screened.yaml
+
+experiment:
+  name: us-tech-largecap
+  seed: 0
+
+data:
+  source: yfinance
+  screen:                       # build the universe by metadata, not a fixed list
+    country: United States
+    sector: Information Technology
+    market_cap: Large Cap
+    limit: 25                   # cap the number of names (optional)
+    # only_primary_listing: true  # default true (drops foreign cross-listings)
+    # exclude_delisted: true      # default true (set false to include delisted)
+  start: 2010-01-01
+  end: 2024-12-31
+  field: adj_close
+
+estimators: [hull, ou, lsma, sma, ema, kalman, ens_invvar]
+deviation: zscore
+sizing: equal_weight
+window: 20
+cost_bps: 1.0
+
+signal:
+  entry_threshold: 1.5
+  exit_threshold: 0.0
+
+validation:
+  mode: anchored
+  min_train: 756
+  test_span: 126
+  step: 126
+  n_boot: 1000
+  n_mc: 500
+  correction: bh
+
+report:
+  path: reports/universe_screened.md

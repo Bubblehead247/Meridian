@@ -51,6 +51,44 @@ def test_resolve_estimators_variants():
     assert len(runner.resolve_estimators({"estimators": "all"})) >= 37
 
 
+def test_resolve_symbols_explicit_list():
+    assert runner.resolve_symbols({"data": {"symbols": ["AAPL", "MSFT"]}}) == ["AAPL", "MSFT"]
+    assert runner.resolve_symbols({"data": {"symbol": "SPY"}}) == ["SPY"]
+
+
+class _FakeScreener:
+    def __init__(self):
+        self.calls = []
+
+    def build_universe(self, name, **kwargs):
+        from meridian.data.universe import Universe
+        self.calls.append(kwargs)
+        return Universe(name, ("AAA", "BBB", "CCC", "DDD"))
+
+
+def test_resolve_symbols_from_screen_with_limit():
+    scr = _FakeScreener()
+    cfg = {"data": {"screen": {"country": "United States", "sector": "Information Technology",
+                               "limit": 2, "only_primary_listing": True}}}
+    syms = runner.resolve_symbols(cfg, screener=scr)
+    assert syms == ["AAA", "BBB"]                       # limited to 2
+    # filters forwarded; screener-only keys (limit) not passed as a filter
+    fwd = scr.calls[0]
+    assert fwd["country"] == "United States" and fwd["sector"] == "Information Technology"
+    assert fwd["only_primary_listing"] is True
+    assert "limit" not in fwd
+
+
+def test_resolve_symbols_screen_no_matches_raises():
+    class _Empty:
+        def build_universe(self, name, **kwargs):
+            from meridian.data.universe import Universe
+            return Universe(name, ())
+
+    with pytest.raises(ValueError, match="matched no symbols"):
+        runner.resolve_symbols({"data": {"screen": {"sector": "Nope"}}}, screener=_Empty())
+
+
 def test_build_signal_and_wfo():
     sig = runner.build_signal({"signal": {"entry_threshold": 1.5, "exit_threshold": 0.2}})
     assert sig.entry_threshold == 1.5 and sig.exit_threshold == 0.2
