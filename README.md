@@ -105,7 +105,12 @@ Monte-Carlo + multiple-testing correction), analytics and reporting, the adaptiv
 meta-model, paper-trading deployment, and this config-driven packaging. See the
 `phase_N_summary.md` files for each phase's contract and limitations.
 
-**Headline research finding:** on SPY, no fair-value estimator shows a
-statistically significant mean-reversion edge out-of-sample once corrected for
-multiple testing — the honest result the platform is built to establish rather
-than obscure.
+**Headline research finding:** no fair-value estimator shows a statistically
+significant, **cost-aware** mean-reversion edge out-of-sample once corrected for
+multiple testing — **absolute or cross-sectional**. Short-horizon cross-sectional
+reversal does produce a significant *gross* signal on liquid large-caps (Sharpe
+0.49 at 1 bp), but ~0.84 daily turnover makes it net-negative by 5 bps — the
+textbook fate of short-term reversal. See `relative_value_study_summary.md` and
+`survivorship_study_summary.md`. The platform is built to establish such results
+honestly rather than obscure them — including killing its own candidate edges
+with cost analysis.

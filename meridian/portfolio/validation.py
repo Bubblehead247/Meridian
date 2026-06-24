@@ -73,12 +73,17 @@ def validate_universe(
     periods_per_year: int = 252,
     seed: int = 0,
     align: str = "union",
+    signal_prices_by_symbol: dict[str, pd.Series] | None = None,
 ) -> pd.DataFrame:
     """Walk-forward validate each estimator as a universe-wide portfolio.
 
     ``align="union"`` (default) uses the full calendar so staggered listings
     (recent IPOs) are handled — a name simply sits inactive before it lists.
     ``align="intersection"`` restricts to dates every symbol shares.
+
+    ``signal_prices_by_symbol`` (optional) lets signals come from a transformed
+    series — e.g. a cross-sectional relative series — while P&L still uses the
+    tradable ``prices_by_symbol`` (relative-value / cross-sectional strategies).
 
     Returns a ranked verdict table (same columns as the single-asset
     `validate`, plus `n_symbols`), sorted by out-of-sample Sharpe.
@@ -93,6 +98,7 @@ def validate_universe(
             prices_by_symbol, est, deviation, signal,
             sizing=sizing, window=window, cost_bps=cost_bps,
             bars_by_symbol=bars_by_symbol, index=idx,
+            signal_prices_by_symbol=signal_prices_by_symbol,
         )
         net = pr.returns
         stitched = pd.concat([net.iloc[f.test_start:f.test_end] for f in folds])

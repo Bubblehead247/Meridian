@@ -122,6 +122,51 @@ def test_universe_backtest_runs_with_staggered_listings():
     assert res.gross_exposure.iloc[:50].sum() >= 0  # early bars: only OLD can be active
 
 
+# --- signal series separate from P&L prices (relative-value strategies) ----
+
+def test_signal_prices_default_matches_absolute():
+    """signal_prices_by_symbol=None must reproduce the absolute strategy exactly."""
+    uni = _universe(k=5)
+    sig = SignalConfig(entry_threshold=1.0)
+    base = run_universe_backtest(uni, "sma", "zscore", sig, window=20)
+    same = run_universe_backtest(uni, "sma", "zscore", sig, window=20,
+                                 signal_prices_by_symbol=None)
+    pd.testing.assert_series_equal(base.returns, same.returns)
+
+
+def test_signals_from_relative_pnl_from_actual():
+    """Signals come from the relative series, P&L from the tradable prices."""
+    from meridian.features import cross_sectional_demean
+
+    uni = _universe(k=6)
+    rel = cross_sectional_demean(uni)
+    res = run_universe_backtest(
+        uni, "sma", "zscore", SignalConfig(entry_threshold=1.0), window=20,
+        signal_prices_by_symbol=rel,
+    )
+    # Uses the relative series for signals -> different from the absolute run,
+    # but P&L is real (finite equity, returns indexed by the price calendar).
+    base = run_universe_backtest(uni, "sma", "zscore", SignalConfig(entry_threshold=1.0), window=20)
+    assert np.isfinite(res.equity.iloc[-1])
+    assert not res.returns.equals(base.returns)
+    assert res.returns.index.equals(union_index(uni))
+
+
+def test_validate_universe_accepts_signal_prices():
+    from meridian.features import cross_sectional_demean
+
+    uni = _universe(k=6, n=700)
+    rel = cross_sectional_demean(uni)
+    spec = WalkForwardSpec(mode="anchored", min_train=250, test_span=100, step=100)
+    df = validate_universe(
+        uni, ["sma", "ou"], "zscore", SignalConfig(entry_threshold=1.0),
+        spec=spec, window=20, n_boot=120, n_mc=100, block=10, seed=0,
+        signal_prices_by_symbol=rel,
+    )
+    assert set(df["estimator"]) == {"sma", "ou"}
+    assert df["significant"].dtype == bool
+
+
 def test_handles_missing_prices_from_membership_gating():
     """Membership-gated universes have NaN prices (pre-listing / post-removal).
     The pipeline must skip those bars without crashing the estimators."""

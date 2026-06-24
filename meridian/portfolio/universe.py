@@ -74,11 +74,13 @@ def run_universe_backtest(
     bars_by_symbol: dict[str, pd.DataFrame] | None = None,
     index: pd.Index | None = None,
     align: str = "union",
+    signal_prices_by_symbol: dict[str, pd.Series] | None = None,
 ) -> PortfolioResult:
     """Backtest one estimator across a universe into a single portfolio.
 
     Args:
-        prices_by_symbol: ``{symbol: price Series}``.
+        prices_by_symbol: ``{symbol: price Series}`` — the **tradable** prices,
+            used for P&L.
         estimator/deviation/signal/window: the usual single-asset knobs, applied
             identically to every symbol (no per-symbol optimization).
         sizing: portfolio sizing scheme.
@@ -87,6 +89,10 @@ def run_universe_backtest(
         index: restrict to these dates (defaults to the study calendar).
         align: "union" (full calendar, handles staggered listings) or
             "intersection" (shared calendar only). Ignored if ``index`` given.
+        signal_prices_by_symbol: optional **signal** series (e.g. a
+            cross-sectional relative series). When given, signals are computed
+            from it while P&L still uses ``prices_by_symbol``. Defaults to using
+            the tradable prices for both (absolute strategy).
 
     Returns:
         A `PortfolioResult` for the whole universe.
@@ -95,8 +101,11 @@ def run_universe_backtest(
         idx = index
     else:
         idx = union_index(prices_by_symbol) if align == "union" else common_index(prices_by_symbol)
+    signal_src = (
+        signal_prices_by_symbol if signal_prices_by_symbol is not None else prices_by_symbol
+    )
     signals = per_symbol_signals(
-        prices_by_symbol, estimator, deviation, signal,
+        signal_src, estimator, deviation, signal,
         window=window, bars_by_symbol=bars_by_symbol,
     ).reindex(idx)
     prices = pd.DataFrame({s: p.reindex(idx) for s, p in prices_by_symbol.items()})
