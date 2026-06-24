@@ -1,6 +1,6 @@
 # Intraday Mean-Reversion Study (research pass 2)
 
-**Status:** Complete (hourly); minute-scale path built, gated on Alpaca keys
+**Status:** Complete — hourly (yfinance) **and minute-scale (Alpaca IEX, live)**
 **Date:** 2026-06-24
 **Scope:** Test MR at intraday frequency (where reversal is documented strongest)
 on whether any edge clears the cost hurdle that killed the daily cross-sectional
@@ -38,8 +38,9 @@ end-to-end intraday `validate_universe`. **354 total pass, lint clean.**
 
 Free intraday options are thin: yfinance gives **1h up to ~730 days** (the only
 walk-forward-viable free granularity); 5m/15m only ~60 days, 1m only ~7 days.
-FMP (`chart` MCP + `financetoolkit`) is **paywalled**. Alpaca free tier has 1-min
-bars but needs keys. **So the live study could only run at the hourly horizon.**
+FMP (`chart` MCP + `financetoolkit`) is **paywalled**. **Alpaca free tier (IEX)
+provides 1-min bars over months/years with free keys** — used for the
+minute-scale study below.
 
 ---
 
@@ -60,40 +61,59 @@ opposite of the daily cross-sectional case (+0.49 gross at 1 bp in pass 1).
 
 ---
 
-## Interpretation (theory-consistent)
+## Results — Alpaca 1-minute (IEX), 20 large-caps, ~45k RTH bars, flatten-at-close
 
-- **Hourly is the wrong horizon for reversal.** Documented intraday mean
-  reversion is a **1–5 minute microstructure effect** (bid-ask bounce, liquidity
-  provision). At the **1-hour** scale, prices *continue* within the session
-  (intraday momentum), so a reversion strategy loses **gross** — exactly what the
-  negative Sharpes show. The effect we wanted to test lives *below* the
-  granularity free data can reach.
-- **Annualization note:** Sharpes look large (±2-3) because a small per-bar mean
-  is scaled by √1764; the *sign* is the result, and it is negative.
-- **The honest verdict at the testable horizon:** no intraday MR edge, absolute
-  or cross-sectional, at hourly frequency on liquid large-caps.
+The minute-scale test that hourly couldn't reach. `periods_per_year=98280`,
+regular-trading-hours bars only, otherwise identical setup. (The
+`AlpacaDataLoader` was fixed and **live-validated** here: free tier needs
+`feed=IEX`, and Alpaca has no adjusted close so `adj_close = close`.)
+
+| strategy | window (min) | best OOS Sharpe | significant |
+|----------|:------------:|----------------:|:-----------:|
+| Absolute | 5 / 15 / 30 | −73 / −44 / −30 | only w30 (sig. **losing**, q=.013) |
+| Cross-sectional | 5 / 15 / 30 | −54 / −37 / −27 | No |
+
+**Cost sweep** (cross-sectional, sma, window 5; turnover 0.80/bar):
+−54 @ 1 bp → −104 @ 2 bp → −216 @ 5 bp → −299 @ 10 bp.
+
+Everything **loses, even gross**, and gets worse with cost. The one "significant"
+cell (absolute w30) is significant because the strategy **reliably loses** — the
+Monte-Carlo rotation test detects non-random *bad* timing, not an edge.
+
+## Interpretation (theory-consistent, now confirmed at minute scale)
+
+- **The "1-minute reversal" is largely a bid-ask-bounce artifact.** It shows up
+  in academic *close-to-close* statistics but is **not capturable with realistic
+  execution**: the backtester fills one bar after the signal (`held =
+  positions.shift(1)`), by which point the bounce has already reverted — so a
+  reversion strategy is effectively *momentum at the execution horizon* and
+  loses. This is the cleanest refutation of "maybe MR works intraday."
+- **Hourly** loses for the complementary reason: at the 1-hour scale prices
+  *continue* within the session (intraday momentum), so reversion loses gross.
+- **Annualization note:** Sharpes look enormous (±30-300) because a small per-bar
+  mean is scaled by √98280; the *sign* is the result, and it is firmly negative.
+- **Caveat:** the free Alpaca feed is **IEX** (~2-3% of volume), thinner/noisier
+  than the full SIP tape (paid). The full tape would be cleaner, but the
+  direction is unambiguous and consistent across every horizon tested.
+
+## Verdict
+
+No intraday MR edge at any tested horizon (1m / 5m-implied / 15m / 30m / 1h),
+absolute or cross-sectional — losing even gross at minute scale. Consistent with
+the whole project: the apparent reversal lives in microstructure statistics, not
+in a realistically-tradable, cost-aware strategy.
 
 ---
 
-## What would actually test the hypothesis
-
-The 1–5 minute test needs **minute bars** — `AlpacaDataLoader` is built and
-unit-tested; it runs as soon as free `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` are
-set (alpaca.markets, no funding). Even then, minute reversal in liquid names is
-heavily arbitraged and the bid-ask-bounce "edge" is mostly uncapturable after
-realistic costs — so the prior is still skeptical, consistent with the whole
-project's findings.
-
----
-
-## Running it on minute data later
+## Reproducing the minute-scale run
 
 ```python
 from meridian.data import load_intraday_universe, bars_per_year
 from meridian.portfolio import validate_universe
 from meridian.features import cross_sectional_demean
-
-px = load_intraday_universe(syms, "1m", source="alpaca")      # needs Alpaca keys
+# set ALPACA_API_KEY / ALPACA_SECRET_KEY (free tier, IEX feed)
+px = load_intraday_universe(syms, "1m", lookback="180d", source="alpaca")
+px = {k: v.between_time("13:30", "20:00") for k, v in px.items()}   # regular hours (UTC)
 rel = cross_sectional_demean(px)
 validate_universe(px, ["sma", "lsma"], "zscore", signal,
                   signal_prices_by_symbol=rel, flatten_overnight=True,
@@ -104,12 +124,13 @@ validate_universe(px, ["sma", "lsma"], "zscore", signal,
 
 ## Bottom line
 
-The platform now handles intraday data and intraday-only sessions, and the
-machinery is frequency-correct. At the only free testable horizon (hourly),
-intraday MR shows **no edge — negative even gross** — consistent with reversal
-being a sub-hourly microstructure phenomenon. The minute-scale test is built and
-awaits free Alpaca keys. The project's headline stands: no robust, cost-aware MR
-edge found — daily, cross-sectional, or intraday.
+The platform now handles intraday data and intraday-only sessions with
+frequency-correct annualization, validated live against both yfinance (hourly)
+and Alpaca (minute, IEX). At **every** tested horizon — 1-minute through hourly —
+intraday MR shows **no edge, losing even gross**: the apparent reversal is a
+bid-ask-bounce artifact that realistic one-bar-lagged execution cannot capture.
+The project's headline stands and is now established across frequencies: no
+robust, cost-aware mean-reversion edge — daily, cross-sectional, or intraday.
 
 ## Next pass (planned)
 - Other asset classes (spreads, ETF pairs, crypto — lower-cost / more

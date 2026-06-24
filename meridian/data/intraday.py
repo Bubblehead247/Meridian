@@ -153,16 +153,23 @@ class AlpacaDataLoader:
         self._client = StockHistoricalDataClient(key, secret)
 
     def load(  # pragma: no cover - needs live API
-        self, symbol: str, interval: str = "1m", lookback: str = "730d"
+        self, symbol: str, interval: str = "1m", lookback: str = "730d", feed: str = "iex"
     ) -> pd.DataFrame:
+        from alpaca.data.enums import DataFeed
         from alpaca.data.requests import StockBarsRequest
         from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 
         unit = {"1m": (1, TimeFrameUnit.Minute), "5m": (5, TimeFrameUnit.Minute),
                 "15m": (15, TimeFrameUnit.Minute), "1h": (1, TimeFrameUnit.Hour)}[interval]
         start = pd.Timestamp.now(tz="UTC") - pd.Timedelta(lookback.replace("d", " days"))
-        req = StockBarsRequest(symbol_or_symbols=symbol, timeframe=TimeFrame(*unit), start=start)
+        req = StockBarsRequest(
+            symbol_or_symbols=symbol, timeframe=TimeFrame(*unit), start=start,
+            feed=DataFeed(feed),  # free tier serves IEX
+        )
         raw = self._client.get_stock_bars(req).df
+        if raw is None or raw.empty:
+            raise ValueError(f"No Alpaca data for {symbol!r} ({interval})")
         df = raw.xs(symbol, level="symbol") if "symbol" in raw.index.names else raw
-        df = df.rename(columns=str.title)  # open/high/low/close/volume
+        # Alpaca has no adjusted close; use close (splits are rare intraday).
+        df = df.assign(adj_close=df["close"])
         return normalize_ohlcv(df)

@@ -110,9 +110,10 @@ significant, **cost-aware** mean-reversion edge out-of-sample once corrected for
 multiple testing — **absolute or cross-sectional**. Short-horizon cross-sectional
 reversal does produce a significant *gross* signal on liquid large-caps (Sharpe
 0.49 at 1 bp), but ~0.84 daily turnover makes it net-negative by 5 bps — the
-textbook fate of short-term reversal. At the **intraday** (hourly) horizon MR is
-negative even gross, consistent with reversal being a sub-hourly microstructure
-effect below free-data granularity. See `relative_value_study_summary.md`,
-`intraday_study_summary.md`, and `survivorship_study_summary.md`. The platform is
+textbook fate of short-term reversal. At the **intraday** horizon — tested down
+to **1-minute** bars (Alpaca) — MR loses even gross: the apparent reversal is a
+bid-ask-bounce artifact that realistic one-bar-lagged execution cannot capture.
+See `relative_value_study_summary.md`, `intraday_study_summary.md`, and
+`survivorship_study_summary.md`. The platform is
 built to establish such results honestly rather than obscure them — including
 killing its own candidate edges with cost analysis.
