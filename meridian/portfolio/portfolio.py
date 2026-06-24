@@ -35,6 +35,7 @@ def backtest_portfolio(
     sizing: str = "equal_weight",
     cost_bps: float = 1.0,
     lookback: int = 20,
+    flatten_overnight: bool = False,
 ) -> PortfolioResult:
     """Backtest a cross-sectional portfolio.
 
@@ -45,6 +46,11 @@ def backtest_portfolio(
         sizing: Sizing scheme name (`equal_weight` or `inverse_vol`).
         cost_bps: Flat cost in bps charged on portfolio turnover.
         lookback: Lookback for vol-based sizing.
+        flatten_overnight: For intraday bars — force the book flat on the last bar
+            of each session (derived from the DatetimeIndex's date). Because the
+            held position is lagged, the next session opens flat, so the overnight
+            gap return is never booked and nothing is carried overnight (and the
+            daily flatten shows up as real turnover/cost).
 
     Returns:
         A `PortfolioResult` whose `returns` is the net portfolio return series.
@@ -55,6 +61,10 @@ def backtest_portfolio(
     returns = prices.pct_change(fill_method=None).fillna(0.0)
 
     weights = get_sizing(sizing)(signals, returns, lookback)
+    if flatten_overnight and len(weights):
+        dates = pd.Series(pd.DatetimeIndex(weights.index).normalize(), index=weights.index)
+        session_close = dates.ne(dates.shift(-1))  # last bar of each session (and final bar)
+        weights = weights.mask(session_close, 0.0)
     held = weights.shift(1).fillna(0.0)  # lag: weight decided at t earns t->t+1
 
     gross = (held * returns).sum(axis=1)

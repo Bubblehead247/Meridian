@@ -75,6 +75,7 @@ def run_universe_backtest(
     index: pd.Index | None = None,
     align: str = "union",
     signal_prices_by_symbol: dict[str, pd.Series] | None = None,
+    flatten_overnight: bool = False,
 ) -> PortfolioResult:
     """Backtest one estimator across a universe into a single portfolio.
 
@@ -109,4 +110,7 @@ def run_universe_backtest(
         window=window, bars_by_symbol=bars_by_symbol,
     ).reindex(idx)
     prices = pd.DataFrame({s: p.reindex(idx) for s, p in prices_by_symbol.items()})
-    return backtest_portfolio(signals, prices, sizing=sizing, cost_bps=cost_bps, lookback=window)
+    return backtest_portfolio(
+        signals, prices, sizing=sizing, cost_bps=cost_bps, lookback=window,
+        flatten_overnight=flatten_overnight,
+    )

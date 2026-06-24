@@ -74,6 +74,7 @@ def validate_universe(
     seed: int = 0,
     align: str = "union",
     signal_prices_by_symbol: dict[str, pd.Series] | None = None,
+    flatten_overnight: bool = False,
 ) -> pd.DataFrame:
     """Walk-forward validate each estimator as a universe-wide portfolio.
 
@@ -99,6 +100,7 @@ def validate_universe(
             sizing=sizing, window=window, cost_bps=cost_bps,
             bars_by_symbol=bars_by_symbol, index=idx,
             signal_prices_by_symbol=signal_prices_by_symbol,
+            flatten_overnight=flatten_overnight,
         )
         net = pr.returns
         stitched = pd.concat([net.iloc[f.test_start:f.test_end] for f in folds])

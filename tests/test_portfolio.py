@@ -122,6 +122,52 @@ def test_universe_backtest_runs_with_staggered_listings():
     assert res.gross_exposure.iloc[:50].sum() >= 0  # early bars: only OLD can be active
 
 
+# --- intraday: flatten-at-close (no overnight) -----------------------------
+
+def test_flatten_overnight_forces_flat_at_session_close():
+    idx = pd.DatetimeIndex(
+        ["2024-01-02 09:30", "2024-01-02 10:30", "2024-01-02 11:30",   # session 1
+         "2024-01-03 09:30", "2024-01-03 10:30", "2024-01-03 11:30"]   # session 2
+    )
+    cols = ["A", "B"]
+    signals = pd.DataFrame(1, index=idx, columns=cols)   # always long both
+    prices = pd.DataFrame({"A": [10, 11, 12, 13, 14, 15], "B": [20, 21, 22, 23, 24, 25]},
+                          index=idx, dtype=float)
+    res = backtest_portfolio(signals, prices, cost_bps=0.0, flatten_overnight=True)
+    # held = weights lagged; flattened on each session's last bar (rows 2 and 5),
+    # so the held book is 0 on the first bar of each session (rows 0 and 3).
+    assert res.weights.loc[idx[3]].abs().sum() == pytest.approx(0.0)  # session-2 open: flat
+    # ...and the overnight return (row 3) is therefore not booked
+    assert res.returns.loc[idx[3]] == pytest.approx(0.0)
+
+
+def test_flatten_overnight_default_false_unchanged():
+    idx = pd.date_range("2024-01-02 09:30", periods=6, freq="1h")
+    signals = pd.DataFrame(1, index=idx, columns=["A", "B"])
+    prices = pd.DataFrame({"A": np.linspace(10, 15, 6), "B": np.linspace(20, 25, 6)}, index=idx)
+    a = backtest_portfolio(signals, prices, cost_bps=0.0)
+    b = backtest_portfolio(signals, prices, cost_bps=0.0, flatten_overnight=False)
+    pd.testing.assert_series_equal(a.returns, b.returns)
+
+
+def test_validate_universe_flatten_overnight_runs():
+    rng = np.random.default_rng(0)
+    # 4 sessions x ~60 intraday bars, 4 names
+    idx = pd.DatetimeIndex(
+        [pd.Timestamp("2024-01-02") + pd.Timedelta(days=d, hours=h)
+         for d in range(40) for h in range(7)]
+    )
+    uni = {f"S{i}": pd.Series(100 + np.cumsum(rng.normal(0, 0.2, len(idx))), index=idx)
+           for i in range(4)}
+    spec = WalkForwardSpec(mode="anchored", min_train=120, test_span=60, step=60)
+    df = validate_universe(
+        uni, ["sma"], "zscore", SignalConfig(entry_threshold=1.0), spec=spec, window=10,
+        n_boot=80, n_mc=60, block=10, seed=0, periods_per_year=1764, flatten_overnight=True,
+    )
+    assert df["estimator"].tolist() == ["sma"]
+    assert df["significant"].dtype == bool
+
+
 # --- signal series separate from P&L prices (relative-value strategies) ----
 
 def test_signal_prices_default_matches_absolute():
