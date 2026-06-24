@@ -127,12 +127,14 @@ class WalkForwardResult:
                     "oos_sharpe": sharpe(rets, self.periods_per_year),
                     "oos_return": total_return(rets),
                     "n_folds": len(self.folds),
-                    "fold_win_rate": float(np.mean(np.array(fold_rets) > 0)) if fold_rets else float("nan"),
+                    "fold_win_rate": (
+                        float(np.mean(np.array(fold_rets) > 0)) if fold_rets else float("nan")
+                    ),
                 }
             )
         return pd.DataFrame(rows).sort_values("oos_sharpe", ascending=False).reset_index(drop=True)
 
-    def selection(self, by: str = "train_metric") -> "SelectionResult":
+    def selection(self, by: str = "train_metric") -> SelectionResult:
         """Walk-forward selection overlay.
 
         Each fold, pick the key with the best train-window metric and take *its*
@@ -147,7 +149,9 @@ class WalkForwardResult:
             chosen.append(best)
             parts.append(fd[best]["test_returns"])
         returns = pd.concat(parts) if parts else pd.Series(dtype=float)
-        return SelectionResult(returns=returns, chosen=chosen, periods_per_year=self.periods_per_year)
+        return SelectionResult(
+            returns=returns, chosen=chosen, periods_per_year=self.periods_per_year
+        )
 
 
 @dataclass
@@ -160,7 +164,9 @@ class SelectionResult:
         return {
             "oos_sharpe": sharpe(self.returns, self.periods_per_year),
             "oos_return": total_return(self.returns),
-            "n_switches": int(sum(a != b for a, b in zip(self.chosen, self.chosen[1:]))),
+            "n_switches": int(
+                sum(a != b for a, b in zip(self.chosen, self.chosen[1:], strict=False))
+            ),
         }
 
 

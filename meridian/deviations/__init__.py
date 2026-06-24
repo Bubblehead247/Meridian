@@ -6,10 +6,9 @@ Importing this package registers every deviation metric. Look them up by name:
     dev = create("zscore", window=20)
 """
 
-from meridian.deviations.base import BaseDeviation, RollingDeviation
-
 # Importing the metrics module registers all metrics as a side effect.
 from meridian.deviations import metrics  # noqa: F401
+from meridian.deviations.base import BaseDeviation, RollingDeviation
 from meridian.deviations.registry import (
     all_deviations,
     create,

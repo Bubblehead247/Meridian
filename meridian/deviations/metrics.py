@@ -17,7 +17,7 @@ the same scale.
 from __future__ import annotations
 
 from collections import deque
-from typing import Mapping
+from collections.abc import Mapping
 
 import numpy as np
 

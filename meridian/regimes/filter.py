@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-import numpy as np
 import pandas as pd
 
 from meridian.regimes.registry import create as make_regime

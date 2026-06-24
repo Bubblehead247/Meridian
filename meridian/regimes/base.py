@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections import deque
-from typing import Mapping
+from collections.abc import Mapping
 
 import numpy as np
 import pandas as pd

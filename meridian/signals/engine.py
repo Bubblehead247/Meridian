@@ -54,7 +54,7 @@ class SignalConfig:
             raise ValueError("stop_threshold must be > 0 or None")
 
     @classmethod
-    def from_config(cls, signal_cfg: dict) -> "SignalConfig":
+    def from_config(cls, signal_cfg: dict) -> SignalConfig:
         """Build from an experiment config's ``signal`` section (missing keys
         fall back to defaults)."""
         return cls(

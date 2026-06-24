@@ -78,11 +78,13 @@ def _cmd_list(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="meridian", description="Mean-reversion research platform")
+    parser = argparse.ArgumentParser(
+        prog="meridian", description="Mean-reversion research platform"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     for name, fn, help_ in [
-        ("validate", _cmd_validate, "Walk-forward validate estimators from a config and write a report"),
+        ("validate", _cmd_validate, "Walk-forward validate estimators and write a report"),
         ("backtest", _cmd_backtest, "Run validation and print the ranked table (no report)"),
         ("universe", _cmd_universe, "Cross-sectional universe-wide validation across many symbols"),
         ("paper", _cmd_paper, "Paper-trade dry-run: warm on history, replay the rest"),

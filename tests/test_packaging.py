@@ -22,7 +22,9 @@ def _mr(n=500, seed=0) -> pd.Series:
 
 
 def _bars(prices: pd.Series) -> pd.DataFrame:
-    return pd.DataFrame({"high": prices + 1, "low": prices - 1, "close": prices}, index=prices.index)
+    return pd.DataFrame(
+        {"high": prices + 1, "low": prices - 1, "close": prices}, index=prices.index
+    )
 
 
 def _cfg(tmp_path) -> dict:

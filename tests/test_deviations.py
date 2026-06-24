@@ -8,7 +8,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from meridian.deviations import all_deviations, create, list_deviations
+from meridian.deviations import create, list_deviations
 
 ALL = list_deviations()
 RESIDUAL_ONLY = [n for n in ALL if n != "atr_norm"]

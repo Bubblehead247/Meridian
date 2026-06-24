@@ -11,8 +11,9 @@ to no-ops so that early phases (which may not log anything yet) still run.
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 try:  # MLflow is a heavy dependency; tolerate its absence in minimal installs.
     import mlflow

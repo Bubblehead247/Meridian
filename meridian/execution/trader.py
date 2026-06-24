@@ -13,8 +13,8 @@ the same state a backtest would have at that point (the book itself starts flat)
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Mapping
 
 import pandas as pd
 

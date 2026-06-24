@@ -17,7 +17,7 @@ from meridian.validation import (
     validate,
     walk_forward,
 )
-from meridian.validation.stats import sharpe, strategy_net
+from meridian.validation.stats import strategy_net
 
 
 def _mean_reverting(n=600, seed=0) -> pd.Series:
@@ -41,7 +41,9 @@ def test_anchored_folds_tile_and_are_forward_only():
 
 
 def test_rolling_folds_use_fixed_train_window():
-    folds = make_folds(10, WalkForwardSpec(mode="rolling", train_span=4, min_train=4, test_span=2, step=2))
+    folds = make_folds(
+        10, WalkForwardSpec(mode="rolling", train_span=4, min_train=4, test_span=2, step=2)
+    )
     assert folds[0].train_start == 0 and folds[1].train_start == 2
     for f in folds:
         assert f.train_end - f.train_start == 4  # fixed length
@@ -74,7 +76,9 @@ def test_anchored_stitched_equals_full_backtest_slices():
 def test_summary_and_selection_run():
     prices = _mean_reverting()
     spec = WalkForwardSpec(mode="anchored", min_train=200, test_span=100, step=100)
-    wf = walk_forward(prices, ["sma", "ema", "ou"], ["zscore"], SignalConfig(entry_threshold=1.0), spec=spec)
+    wf = walk_forward(
+        prices, ["sma", "ema", "ou"], ["zscore"], SignalConfig(entry_threshold=1.0), spec=spec
+    )
     summ = wf.summary()
     assert set(summ["estimator"]) == {"sma", "ema", "ou"}
     assert "oos_sharpe" in summ.columns
@@ -82,8 +86,13 @@ def test_summary_and_selection_run():
     sel = wf.selection()
     assert len(sel.chosen) == len(wf.folds)
     # each chosen key is the per-fold argmax of the train metric
-    for fd, chosen in zip(wf.fold_data, sel.chosen):
-        best = max(wf.keys, key=lambda k: (-np.inf if np.isnan(fd[k]["train_metric"]) else fd[k]["train_metric"]))
+    for fd, chosen in zip(wf.fold_data, sel.chosen, strict=False):
+        best = max(
+            wf.keys,
+            key=lambda k, fd=fd: (
+                -np.inf if np.isnan(fd[k]["train_metric"]) else fd[k]["train_metric"]
+            ),
+        )
         assert chosen == best
 
 

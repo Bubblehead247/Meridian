@@ -7,8 +7,6 @@ up by name:
     est = create("ema", window=20)
 """
 
-from meridian.estimators.base import BaseEstimator
-
 # Importing each family module registers its estimators as a side effect.
 from meridian.estimators import (  # noqa: F401  (side-effect imports)
     filters,
@@ -17,6 +15,7 @@ from meridian.estimators import (  # noqa: F401  (side-effect imports)
     robust,
     stochastic,
 )
+from meridian.estimators.base import BaseEstimator
 
 # Ensembles import the registry (populated above) and register named ensembles.
 from meridian.estimators.ensemble import (  # noqa: F401

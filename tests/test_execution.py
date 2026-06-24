@@ -83,7 +83,7 @@ def test_orders_only_on_position_change():
                         SignalConfig(entry_threshold=1.0), window=20)
     trader.replay(px)
     signals = [d.signal for d in trader.log]
-    changes = sum(1 for a, b in zip(signals, signals[1:]) if a != b)
+    changes = sum(1 for a, b in zip(signals, signals[1:], strict=False) if a != b)
     if signals[0] != 0:
         changes += 1  # initial entry from flat
     n_orders = sum(1 for d in trader.log if d.order is not None)

@@ -134,7 +134,9 @@ def performance_metrics(
                 "trade_avg_loss": float(tloss.mean()) if tloss.size else 0.0,
                 "trade_expectancy": float(tr.mean()),
                 "trade_profit_factor": (
-                    float(twin.sum() / -tloss.sum()) if tloss.size and tloss.sum() < 0 else float("inf")
+                    float(twin.sum() / -tloss.sum())
+                    if tloss.size and tloss.sum() < 0
+                    else float("inf")
                 ),
             }
         )

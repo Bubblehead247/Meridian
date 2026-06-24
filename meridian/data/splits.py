@@ -32,7 +32,7 @@ class SplitSpec:
     walk_forward_start: str = DEFAULT_WALK_FORWARD_START
 
     @classmethod
-    def from_config(cls, data_cfg: dict) -> "SplitSpec":
+    def from_config(cls, data_cfg: dict) -> SplitSpec:
         """Build a SplitSpec from an experiment config's ``data`` section.
 
         Accepts the keys ``in_sample`` (``[start, end]``), ``out_of_sample``
@@ -80,7 +80,7 @@ def _between(obj, start: str | None, end: str | None):
     return obj[mask.to_numpy()]
 
 
-def split(obj, spec: SplitSpec | None = None) -> dict[str, "pd.Series | pd.DataFrame"]:
+def split(obj, spec: SplitSpec | None = None) -> dict[str, pd.Series | pd.DataFrame]:
     """Split a time-indexed Series or DataFrame into the three windows.
 
     Args:

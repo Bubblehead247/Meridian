@@ -15,7 +15,6 @@ from meridian.analytics import (
     write_report,
 )
 
-
 # --- metrics: exact / known values ---------------------------------------
 
 def test_drawdown_and_max_drawdown():

@@ -28,7 +28,6 @@ import math
 from collections import deque
 
 import numpy as np
-from scipy.stats import trim_mean
 
 from meridian.estimators._rolling import RollingEstimator
 from meridian.estimators.registry import create as _create_estimator

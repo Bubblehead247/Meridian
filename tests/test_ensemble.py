@@ -72,7 +72,9 @@ def test_median_combine_equals_member_median():
 
 @pytest.mark.parametrize("combine", ["inverse_variance", "skill"])
 def test_adaptive_weights_are_valid(combine):
-    ens = make_ensemble(["sma", "ema", "kalman", "lsma", "median", "ou"], combine=combine, window=20)
+    ens = make_ensemble(
+        ["sma", "ema", "kalman", "lsma", "median", "ou"], combine=combine, window=20
+    )
     ens.fit(_mean_reverting())
     w = np.array(ens.state()["weights"])
     assert np.all(w >= -1e-12)

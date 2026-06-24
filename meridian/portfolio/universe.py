@@ -12,8 +12,8 @@ from functools import reduce
 
 import pandas as pd
 
-from meridian.signals import SignalConfig, compute_scores, generate_positions
 from meridian.portfolio.portfolio import PortfolioResult, backtest_portfolio
+from meridian.signals import SignalConfig, compute_scores, generate_positions
 
 
 def per_symbol_signals(

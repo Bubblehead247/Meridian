@@ -23,7 +23,6 @@ from meridian.execution.trader import PaperTrader
 from meridian.signals import SignalConfig
 from meridian.validation import WalkForwardSpec, validate
 
-
 # --- config -> objects ----------------------------------------------------
 
 def build_signal(cfg: dict) -> SignalConfig:
@@ -68,7 +67,11 @@ def resolve_symbols(cfg: dict, screener=None) -> list[str]:
             screener = EquityScreener()
         filters = dict(screen)
         limit = filters.pop("limit", None)
-        opts = {k: filters.pop(k) for k in ("only_primary_listing", "yfinance_safe") if k in filters}
+        opts = {
+            k: filters.pop(k)
+            for k in ("only_primary_listing", "yfinance_safe")
+            if k in filters
+        }
         universe = screener.build_universe("screened", **opts, **filters)
         symbols = list(universe.symbols)
         if limit is not None:
@@ -84,7 +87,9 @@ def build_broker(cfg: dict):
     b = cfg.get("broker", {"type": "simulated"})
     kind = b.get("type", "simulated")
     if kind == "simulated":
-        return SimulatedBroker(cash=float(b.get("cash", 100_000)), cost_bps=float(b.get("cost_bps", 1.0)))
+        return SimulatedBroker(
+            cash=float(b.get("cash", 100_000)), cost_bps=float(b.get("cost_bps", 1.0))
+        )
     if kind == "alpaca":
         return AlpacaBroker(api_key=b.get("api_key"), secret_key=b.get("secret_key"),
                             paper=bool(b.get("paper", True)))

@@ -17,12 +17,12 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from meridian.portfolio.universe import common_index, run_universe_backtest, union_index
 from meridian.signals import SignalConfig
 from meridian.validation.bootstrap import block_bootstrap_sharpe
 from meridian.validation.correction import correct
 from meridian.validation.stats import sharpe, total_return
 from meridian.validation.walkforward import WalkForwardSpec, make_folds
-from meridian.portfolio.universe import common_index, run_universe_backtest, union_index
 
 
 def _portfolio_mc_pvalue(

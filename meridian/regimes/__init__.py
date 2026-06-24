@@ -7,10 +7,9 @@ filter on signals.
     from meridian.regimes import create, classify, run_gated_backtest
 """
 
-from meridian.regimes.base import UNKNOWN, BaseRegime, RollingRegime
-
 # Importing the classifiers module registers all regimes as a side effect.
 from meridian.regimes import classifiers  # noqa: F401
+from meridian.regimes.base import UNKNOWN, BaseRegime, RollingRegime
 from meridian.regimes.filter import classify, gate_positions, run_gated_backtest
 from meridian.regimes.registry import (
     all_regimes,

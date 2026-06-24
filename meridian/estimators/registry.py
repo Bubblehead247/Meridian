@@ -8,7 +8,8 @@ library. Registration happens as a side effect of importing each family module;
 
 from __future__ import annotations
 
-from typing import Callable, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 from meridian.estimators.base import BaseEstimator
 

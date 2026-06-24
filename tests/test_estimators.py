@@ -16,7 +16,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from meridian.estimators import all_estimators, create, list_estimators
+from meridian.estimators import create, list_estimators
 
 warnings.filterwarnings("ignore")
 

@@ -147,4 +147,5 @@ class HurstRegime(RollingRegime):
         return "random"
 
     def _extra_state(self) -> dict:
-        return {"hurst": self._hurst(self._prices(self.window)) if self.n >= self._min_obs() else float("nan")}
+        ready = self.n >= self._min_obs()
+        return {"hurst": self._hurst(self._prices(self.window)) if ready else float("nan")}
