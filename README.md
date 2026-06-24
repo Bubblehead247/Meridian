@@ -43,7 +43,10 @@ meridian paper    configs/paper_spy.yaml         # paper-trading dry-run
   returns are validated — the highest-power test of an edge. Instead of a fixed
   `data.symbols` list, a `data.screen` block selects the universe by
   FinanceDatabase metadata (country / sector / market_cap, with an optional
-  `limit`) — see `configs/universe_screened.yaml`.
+  `limit`) — see `configs/universe_screened.yaml`. Set `data.source:
+  survivorship` to run on a local **point-in-time, survivorship-bias-free** S&P
+  500 dataset (`variant: free` vs `survivor` measures the bias) — see
+  `configs/survivorship_spy.yaml` and `survivorship_study_summary.md`.
 - **paper** warms the indicators on the first half of history and replays the
   rest through a `SimulatedBroker`. For **live** paper trading, set
   `broker.type: alpaca` in the config, export `ALPACA_API_KEY` /

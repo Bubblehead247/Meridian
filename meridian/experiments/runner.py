@@ -192,13 +192,18 @@ def run_paper_dry_run(
 
 
 def load_universe_prices(cfg: dict, cache=None) -> tuple[dict, dict]:
-    """Load OHLCV for every symbol in the config (network).
+    """Load prices for every symbol in the config for the universe-wide study.
 
-    Returns ``(prices_by_symbol, bars_by_symbol)`` for the universe-wide study.
+    Returns ``(prices_by_symbol, bars_by_symbol)``. ``data.source`` selects the
+    provider: ``yfinance`` (default) or ``survivorship`` (a local point-in-time
+    survivorship-bias-free dataset).
     """
+    data = cfg.get("data", {})
+    if data.get("source") == "survivorship":
+        return _load_survivorship_universe(data)
+
     from meridian.data import load_universe
 
-    data = cfg.get("data", {})
     symbols = resolve_symbols(cfg)
     frames = load_universe(
         symbols, start=data.get("start"), end=data.get("end"),
@@ -207,6 +212,31 @@ def load_universe_prices(cfg: dict, cache=None) -> tuple[dict, dict]:
     field = data.get("field", "adj_close")
     prices = {s: f[field] for s, f in frames.items()}
     return prices, dict(frames)
+
+
+def _load_survivorship_universe(data: dict) -> tuple[dict, dict]:
+    """Build a universe from the local survivorship-bias-free dataset.
+
+    Config keys under ``data``: ``root`` (dataset path), ``variant``
+    (``free`` = point-in-time/bias-free, default, or ``survivor`` = the biased
+    end-of-period baseline), ``start``/``end``, ``field`` (default ``close``).
+    Prices only — no OHLC bars (the dataset is close-oriented), so ``atr_norm``
+    is unavailable here.
+    """
+    from meridian.data import SurvivorshipDataset
+
+    if "root" not in data:
+        raise ValueError("survivorship source requires data.root (dataset path)")
+    ds = SurvivorshipDataset(data["root"])
+    variant = data.get("variant", "free")
+    start, end, field = data.get("start"), data.get("end"), data.get("field", "close")
+    if variant == "free":
+        prices = ds.survivorship_free_universe(start, end, field=field)
+    elif variant == "survivor":
+        prices = ds.survivor_only_universe(start, end, field=field)
+    else:
+        raise ValueError(f"unknown survivorship variant {variant!r} (use 'free' or 'survivor')")
+    return prices, {}
 
 
 def run_universe_validation(

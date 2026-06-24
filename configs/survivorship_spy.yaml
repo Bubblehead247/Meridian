@@ -1,0 +1,44 @@
+# Survivorship-bias-free S&P 500 universe study using Teddy Koker's dataset
+# (point-in-time membership + delisted prices, ~2014-2018).
+#
+# Setup once:
+#   git clone https://github.com/teddykoker/survivorship-free-spy external/survivorship-free-spy
+# Run:
+#   meridian universe configs/survivorship_spy.yaml
+#
+# Flip data.variant to measure the bias: "free" (point-in-time, bias-free) vs
+# "survivor" (only the names still in the index at the end — the biased view).
+
+experiment:
+  name: spy-survivorship
+  seed: 0
+
+data:
+  source: survivorship
+  root: external/survivorship-free-spy/survivorship-free
+  variant: free            # free | survivor
+  start: 2014-01-01
+  end: 2018-03-01
+  field: close
+
+estimators: [sma, ou, lsma, hull]
+deviation: zscore
+sizing: equal_weight
+window: 20
+cost_bps: 1.0
+
+signal:
+  entry_threshold: 1.5
+  exit_threshold: 0.0
+
+validation:
+  mode: anchored
+  min_train: 504           # ~2 years (the dataset is only ~5 years long)
+  test_span: 126
+  step: 126
+  n_boot: 500
+  n_mc: 300
+  correction: bh
+
+report:
+  path: reports/survivorship_validation.md

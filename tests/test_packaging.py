@@ -171,6 +171,49 @@ def _univ_cfg(tmp_path) -> dict:
     return cfg
 
 
+def _survivorship_root(tmp_path):
+    """Build a minimal survivorship-free-spy-format dataset; return its root."""
+    root = tmp_path / "sf"
+    (root / "data").mkdir(parents=True)
+    root.joinpath("constituents.csv").write_text(
+        "2018-02-28,\"['A', 'B']\"\n2018-01-31,\"['A', 'B', 'C']\"\n", encoding="utf-8"
+    )
+    dates = pd.date_range("2018-01-02", "2018-02-28", freq="B")
+    for i, t in enumerate(["A", "B", "C"]):
+        px = 100 + i + np.arange(len(dates)) * 0.1
+        pd.DataFrame({"date": dates.strftime("%Y-%m-%d"), "open": px, "high": px + 1,
+                      "low": px - 1, "close": px, "volume": 1000}).to_csv(
+            root / "data" / f"{t}.csv", index=False)
+    return root
+
+
+def test_load_universe_prices_survivorship_free(tmp_path):
+    cfg = {"data": {"source": "survivorship", "root": str(_survivorship_root(tmp_path)),
+                    "variant": "free", "start": "2018-01-01", "end": "2018-03-01"}}
+    prices, bars = runner.load_universe_prices(cfg)
+    assert set(prices) == {"A", "B", "C"}     # includes removed name C
+    assert bars == {}
+
+
+def test_load_universe_prices_survivor_only(tmp_path):
+    cfg = {"data": {"source": "survivorship", "root": str(_survivorship_root(tmp_path)),
+                    "variant": "survivor", "start": "2018-01-01", "end": "2018-03-01"}}
+    prices, _ = runner.load_universe_prices(cfg)
+    assert set(prices) == {"A", "B"}          # survivor-only drops removed C
+
+
+def test_survivorship_unknown_variant_raises(tmp_path):
+    cfg = {"data": {"source": "survivorship", "root": str(_survivorship_root(tmp_path)),
+                    "variant": "bogus"}}
+    with pytest.raises(ValueError, match="variant"):
+        runner.load_universe_prices(cfg)
+
+
+def test_survivorship_requires_root():
+    with pytest.raises(ValueError, match="data.root"):
+        runner.load_universe_prices({"data": {"source": "survivorship"}})
+
+
 def test_run_universe_validation(tmp_path):
     uni = _universe()
     table = runner.run_universe_validation(_univ_cfg(tmp_path), uni)
