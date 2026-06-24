@@ -50,7 +50,9 @@ def backtest_portfolio(
         A `PortfolioResult` whose `returns` is the net portfolio return series.
     """
     prices = prices.reindex(columns=signals.columns)
-    returns = prices.pct_change().fillna(0.0)
+    # fill_method=None: a missing price gives a NaN (->0) return, never a padded
+    # one — so membership gaps / removals don't fabricate carried-forward prices.
+    returns = prices.pct_change(fill_method=None).fillna(0.0)
 
     weights = get_sizing(sizing)(signals, returns, lookback)
     held = weights.shift(1).fillna(0.0)  # lag: weight decided at t earns t->t+1

@@ -174,8 +174,10 @@ def compute_scores(
 
     scores = np.full(len(prices), np.nan)
     for i, price in enumerate(prices.to_numpy(dtype=float)):
-        est.update(float(price))
-        r = est.residual(float(price))
+        if not np.isfinite(price):
+            continue  # missing-data bar (e.g. before listing): no signal, no state update
+        est.update(price)
+        r = est.residual(price)
         bar = bars.iloc[i] if bars is not None else None
         dev.update(r, bar=bar)
         scores[i] = dev.value(r)

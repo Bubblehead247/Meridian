@@ -122,6 +122,24 @@ def test_universe_backtest_runs_with_staggered_listings():
     assert res.gross_exposure.iloc[:50].sum() >= 0  # early bars: only OLD can be active
 
 
+def test_handles_missing_prices_from_membership_gating():
+    """Membership-gated universes have NaN prices (pre-listing / post-removal).
+    The pipeline must skip those bars without crashing the estimators."""
+    full = _reverting(400, seed=1)
+    gated = _reverting(400, seed=2).copy()
+    gated.iloc[:150] = np.nan   # "not yet a member" early
+    gated.iloc[350:] = np.nan   # "removed from index" late
+    uni = {"FULL": full, "GATED": gated}
+
+    # ou uses a least-squares fit that previously crashed on NaN windows.
+    res = run_universe_backtest(uni, "ou", "zscore", SignalConfig(entry_threshold=1.0), window=20)
+    assert np.isfinite(res.equity.iloc[-1])
+    sigs = per_symbol_signals(uni, "ou", "zscore", SignalConfig(entry_threshold=1.0), window=20)
+    # GATED is inactive (NaN signal) exactly where it had no price
+    assert sigs["GATED"].iloc[:150].isna().all()
+    assert sigs["GATED"].iloc[350:].isna().all()
+
+
 def test_run_universe_backtest_produces_returns():
     uni = _universe(k=5)
     res = run_universe_backtest(uni, "ou", "zscore", SignalConfig(entry_threshold=1.0), window=20)

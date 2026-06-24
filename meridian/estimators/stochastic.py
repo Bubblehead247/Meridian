@@ -14,9 +14,16 @@ from meridian.estimators._rolling import RollingEstimator
 from meridian.estimators.registry import register
 
 
-def _ols(X: np.ndarray, y: np.ndarray) -> np.ndarray:
-    """Ordinary least squares coefficients for ``y ~ X`` (X includes intercept)."""
-    coeffs, *_ = np.linalg.lstsq(X, y, rcond=None)
+def _ols(X: np.ndarray, y: np.ndarray) -> np.ndarray | None:
+    """OLS coefficients for ``y ~ X`` (X includes intercept).
+
+    Returns None if the solve fails on a degenerate window (e.g. constant
+    prices), letting callers fall back to a robust default.
+    """
+    try:
+        coeffs, *_ = np.linalg.lstsq(X, y, rcond=None)
+    except (np.linalg.LinAlgError, ValueError):
+        return None
     return coeffs
 
 
@@ -31,7 +38,10 @@ class AR1(RollingEstimator):
             return float(a.mean())
         y = a[1:]
         X = np.column_stack([np.ones(len(y)), a[:-1]])
-        c, phi = _ols(X, y)
+        coeffs = _ols(X, y)
+        if coeffs is None:
+            return float(a.mean())
+        c, phi = coeffs
         return float(c + phi * a[-1])
 
 
@@ -45,7 +55,10 @@ class AR2(RollingEstimator):
             return float(a.mean())
         y = a[2:]
         X = np.column_stack([np.ones(len(y)), a[1:-1], a[:-2]])
-        c, p1, p2 = _ols(X, y)
+        coeffs = _ols(X, y)
+        if coeffs is None:
+            return float(a.mean())
+        c, p1, p2 = coeffs
         return float(c + p1 * a[-1] + p2 * a[-2])
 
 
@@ -60,7 +73,10 @@ class OrnsteinUhlenbeck(RollingEstimator):
             return float(a.mean())
         y = a[1:]
         X = np.column_stack([np.ones(len(y)), a[:-1]])
-        c, phi = _ols(X, y)
+        coeffs = _ols(X, y)
+        if coeffs is None:
+            return float(a.mean())
+        c, phi = coeffs
         if phi >= 1.0 or phi < -1.0:  # non-reverting fit -> fall back
             return float(a.mean())
         return float(c / (1.0 - phi))

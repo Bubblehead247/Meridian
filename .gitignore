@@ -42,3 +42,6 @@ reports/*.svg
 Thumbs.db
 .idea/
 .vscode/
+
+# Vendored external datasets (large, fetched separately)
+external/

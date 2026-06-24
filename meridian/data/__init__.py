@@ -5,6 +5,7 @@ from meridian.data.loader import load_ohlcv, load_universe
 from meridian.data.schema import OHLCV_COLUMNS, normalize_ohlcv
 from meridian.data.screener import EquityScreener
 from meridian.data.splits import SplitSpec, split
+from meridian.data.survivorship import SurvivorshipDataset
 from meridian.data.universe import KNOWN_UNIVERSES, Universe, get_universe
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "EquityScreener",
     "SplitSpec",
     "split",
+    "SurvivorshipDataset",
     "KNOWN_UNIVERSES",
     "Universe",
     "get_universe",

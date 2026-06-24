@@ -35,7 +35,9 @@ def per_symbol_signals(
     for sym, px in prices_by_symbol.items():
         scores = compute_scores(px, estimator, deviation, window=window,
                                 bars=bars_by_symbol.get(sym))
-        cols[sym] = generate_positions(scores, signal)
+        # A name with no price that bar (e.g. before listing / after index removal)
+        # is held flat — so removed names leave the portfolio rather than linger.
+        cols[sym] = generate_positions(scores, signal).where(px.notna())
     return pd.DataFrame(cols)
 
 
