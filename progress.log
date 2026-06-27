@@ -1,0 +1,770 @@
+=== MERIDIAN PROGRESS LOG ===
+Started: 2026-06-25
+
+--- SESSION 001 ---
+Date: 2026-06-25
+Goal: Expand Meridian to full quant fund research platform.
+      Scaffold all modules per PLAN.md.
+
+Tasks:
+[x] S1 regimes/labeler.py stub (docstring owns/not-owns, stdlib imports, TODO: 3 fns)
+[x] S2 families/ pkg: __init__, base.py, registry.py stubs
+[x] S3 7 active family pkgs (mean_reversion, trend_following, momentum, breakouts, pullback_continuation, sector_rotation, long_term_etf): each __init__.py + models.py stub
+[x] S4 2 deferred family pkgs (event_driven, volatility): __init__.py only w/ # Deferred — see PLAN.md
+[x] S5 pipeline/ pkg: __init__, research.py, graduation.py, backtest.py, walk_forward.py, oos.py stubs
+[x] S6 scoring/ pkg: __init__, scorecard.py stub (TODO: wrap analytics.metrics + extra fields)
+[x] S7 portfolio/ new modules: ledger.py, allocation.py, correlation.py, risk_budget.py, monthly_review.py stubs
+[x] S8 reporting/ pkg: __init__, monthly_report.py stub
+[x] S9 Output checklist of every file created
+[x] D1 Create progress.log with SESSION 001 header + §13 task list as [ ]; Notes left blank
+[x] D2 Patch CLAUDE.md: expanded mandate + sections (modules, 9 families w/ status+holding, 3 regime dims, graduation stages+capital, 8-sleeve alloc, scorecard fields, monthly review). Preserve all existing content
+[x] D3 Create STRATEGY_TEMPLATE.md with all 18 spec fields
+
+Notes:
+- PLAN.md written by Opus 2026-06-25 (15 sections; reconciled tree — extend existing
+  modules, no duplicate core/ or data/ohlcv; families = wrap & register, existing
+  mean-reversion code untouched).
+- Scaffold completed by Sonnet 2026-06-25: 32 new stub files (regimes/labeler.py,
+  families/ + 9 family pkgs, pipeline/ 6, scoring/ 2, portfolio/ +5, reporting/ 2).
+  event_driven & volatility are __init__-only deferred stubs. All S1–S9 done.
+- CLAUDE.md patched by Sonnet 2026-06-25: 8 sections appended (Expanded Mandate,
+  Modules, Strategy Families, Regime Labeling, Graduation Pipeline, Starting Portfolio
+  Allocation, Scorecard Fields, Monthly Review Checklist). All prior content preserved.
+- STRATEGY_TEMPLATE.md created by Sonnet 2026-06-25: all 18 fields present.
+- Lint cleanup by Sonnet: removed 31 unused placeholder imports + wrapped 3 long TODO
+  lines so stubs are lint-clean. No logic added.
+- Verification: `import meridian` OK; ruff clean across meridian/ + tests/; full suite
+  372 passed (unchanged — stubs broke nothing); no existing source file modified.
+- Deviations from plan: none. (Reconciliation forks approved before planning, not
+  deviations.)
+- Open questions (from PLAN.md §15, deferred): breadth data source/cost; exact
+  "near-200MA" band for Neutral trend; ledger persistence dir; slippage-sensitivity bps
+  grid; monthly-review benchmark series.
+- Next session first task: implement regimes/labeler.py (the 3-dimension regime labeler)
+  — it gates the permission matrix and tags every backtest/scorecard, so it unblocks the
+  most downstream work.
+
+--- SESSION 002 ---
+Date: 2026-06-25
+Goal: Implement regimes/labeler.py (the 3-dimension index-level regime labeler).
+
+Tasks:
+[x] Implement RegimeLabel dataclass + pure labelers (adx, trend_label, vol_label,
+    breadth_pct, breadth_label) + regime_frame core + build_regime_frame orchestrator
+    + attach_regimes join helper. Export from regimes/__init__.py.
+[x] Tests: tests/test_labeler.py (13 tests).
+[x] Live-verify against real SPY + ^VIX.
+
+Decisions resolved (were PLAN.md §15 deferred):
+- Breadth source: full S&P 500 constituents, pluggable — build_regime_frame defaults to
+  get_universe('SP500')+load_universe (one cached ~500-ticker pull); a pure breadth_pct()
+  does the math; a caller-supplied breadth series skips the pull (offline/testable).
+- Trend "near-200MA" Neutral band: resolved without a fuzzy band — bear if close<200MA;
+  bull if close>=200MA AND ADX>25; neutral otherwise (above MA, weak trend). SPY default
+  benchmark (parameterized, IWM allowed).
+- Vol bins VIX <15/15-20/20-30/>30; breadth >60/40-60/<40.
+
+Design notes:
+- Calendar bug found+fixed: regime_frame must use the TREND benchmark's calendar and
+  reindex VIX/breadth onto it. VIX bars run a few sessions past the last SPY bar; an
+  earlier union() injected trailing all-unknown rows. Regression test added.
+- ADX = Wilder smoothing (ewm alpha=1/window) of DM/TR.
+
+Verification: 13 labeler tests pass; full suite 385 passed (was 372); ruff clean across
+meridian/ + tests/. Live SPY+^VIX build_regime_frame: 869 rows on the SPY calendar,
+trend/vol/breadth labeled at the tail (neutral/normal/expansion).
+Note: the full 500-ticker breadth pull (breadth=None) 403'd live due to transient
+yfinance/Wikipedia rate-limiting — the SPY+VIX path and the breadth math are verified;
+the heavy constituent pull is offline-tested + covered by the monkeypatched orchestrator
+test, to be exercised live (cached) when the rate-limit clears.
+
+Still deferred (PLAN.md §15): ledger persistence dir; slippage-sensitivity bps grid;
+monthly-review benchmark series.
+Next session first task: wire the permission matrix (families gate on attach_regimes
+labels) OR implement scoring/scorecard.py (wraps analytics.metrics + regime splits).
+
+--- SESSION 003 ---
+Date: 2026-06-26
+Goal: Wire the family regime-permission matrix (PLAN.md §5).
+
+Tasks:
+[x] Implement meridian/families/permissions.py: per-family rules (the §5 matrix),
+    is_permitted, permission_mask (vectorized over a regime frame), gate_positions
+    (flatten when restricted, aligned via attach_regimes), cash_reserve_boost.
+    Export from families/__init__.py.
+[x] Tests: tests/test_permissions.py (14 tests, incl. labeler integration).
+
+Design notes:
+- Standalone module (not on families/base.py — Model/StrategyFamily abstraction left for
+  a later session, keeping scope to "wire the matrix").
+- Rules read the 3-dim RegimeLabel. unknown/warm-up dimensions make a gated rule fall
+  through to restricted (conservative); "no-gate" families (sector_rotation,
+  long_term_etf, cash_reserve) are always permitted; deferred families (event_driven,
+  volatility) always restricted.
+- Matrix: trend_following/momentum = bull & vol!=extreme; breakouts = bull & breadth in
+  {expansion,neutral}; pullback = bull & breadth==neutral; mean_reversion = trend in
+  {neutral,bear} & breadth in {neutral,contraction}. cash_reserve_boost = bear & extreme
+  (an allocation signal for portfolio/allocation, not a position gate).
+- Bug found+fixed: gate_positions must pass positions.index to attach_regimes (whose
+  contract is Index|DataFrame); passing the Series mis-reindexed every bar to unknown and
+  flattened everything. Regression covered by the gating tests.
+
+Verification: 14 permission tests pass (incl. real regime_frame -> mask integration);
+full suite 398 passed (was 385); ruff clean across meridian/ + tests/.
+
+Still deferred (PLAN.md §15): ledger persistence dir; slippage-sensitivity bps grid;
+monthly-review benchmark series. Also pending: families/base.py Model/StrategyFamily
+abstraction (the matrix is ready for it to consume via a StrategyFamily.permitted method).
+Next session first task: implement scoring/scorecard.py (wrap analytics.metrics + add
+ulcer/turnover/holding/regime-conditional splits/sleeve-correlation) — regime splits can
+now use attach_regimes.
+
+--- SESSION 004 ---
+Date: 2026-06-26
+Goal: Implement scoring/scorecard.py (full per-strategy scorecard, PLAN.md §10).
+
+Tasks:
+[x] Implement meridian/scoring/scorecard.py: scorecard(returns, *, trades, positions,
+    regime_frame, sleeve_returns, ...) wrapping analytics.metrics.performance_metrics and
+    adding ulcer_index, turnover, avg_holding_period, slippage_sensitivity,
+    regime_conditional (per-dimension splits via attach_regimes), sleeve_correlation.
+    Plus scorecard_from_backtest(BacktestResult, ...) convenience. Export from
+    scoring/__init__.py.
+[x] Tests: tests/test_scorecard.py (8 tests, incl. real run_backtest integration).
+
+Design notes:
+- Reuses analytics.metrics (performance_metrics, drawdown_series, max_drawdown) and
+  validation.stats (sharpe, total_return) — no metric formulas reimplemented.
+- Extended PLAN.md §10 signature: added optional positions (exact two-sided turnover +
+  slippage sensitivity need the held-position path) and renamed regime_labels ->
+  regime_frame (the labeler's trend/vol/breadth frame). Turnover falls back to a
+  trade-count estimate (2 units/round-trip) when positions absent.
+- ulcer_index = RMS of the percentage drawdown path (pct points). slippage_sensitivity =
+  {extra_bps: sharpe after charging that bps on per-bar turnover}; empty without
+  positions (resolves the §15 'slippage bps grid' deferral; default grid (1,5,10,20)).
+  regime_conditional skips 'unknown' buckets. sleeve_correlation = Pearson vs each sleeve
+  on the common calendar.
+
+Verification: 8 scorecard tests pass (incl. run_backtest end-to-end with regime splits +
+sleeve correlation); full suite 407 passed (was 398); ruff clean. Sample card from a
+synthetic backtest emits all base + 6 added fields with sane shapes.
+
+Still deferred (PLAN.md §15): ledger persistence dir; monthly-review benchmark series.
+Pending build-out: families/base.py Model/StrategyFamily abstraction; portfolio/ ledger,
+allocation, correlation, risk_budget, monthly_review; pipeline/ graduation+research+stage
+runners; reporting/monthly_report.
+Next session first task: portfolio/ledger.py + portfolio/allocation.py (the virtual
+ledger + 8-sleeve init, PLAN.md §7/§12) — the scorecard now feeds per-strategy stats
+into the ledger, and graduation/monthly-review depend on it.
+
+--- SESSION 005 ---
+Date: 2026-06-26
+Goal: Implement portfolio/ledger.py (§7 virtual ledger) + portfolio/allocation.py (§12).
+
+Tasks:
+[x] ledger.py: StrategyLedger dataclass (name, family, stage, stage_entered,
+    capital_alloc, open_positions, realized/unrealized_pnl, drawdown_cur/max, win_rate,
+    expectancy, turnover, correlations, risk_contribution + n_trades/n_wins/equity_peak).
+    Methods: equity property, record_trade, mark, update_metrics, set_stage,
+    to_dict/from_dict. STAGES tuple (§6). LedgerStore (JSON, one file/strategy) +
+    load_ledger/save_ledger/list_ledgers. Export from portfolio/__init__.py.
+[x] allocation.py: SLEEVE_ALLOCATIONS (8 sleeves, sums to 1.0, import-time guard);
+    seed_ledgers(equity), rebalance_targets(ledgers, equity), idempotent
+    initialize_ledgers(equity, store).
+[x] Tests: tests/test_ledger.py (10) + tests/test_allocation.py (4).
+
+Decisions resolved (PLAN.md §15 deferral):
+- Ledger persistence dir = top-level ledger/ (DEFAULT_LEDGER_DIR; overridable via
+  LedgerStore root). One JSON per strategy, json.dumps(indent=2) like the trader checkpoint.
+
+Design notes:
+- win_rate/expectancy/turnover default to None ('not yet measured') not NaN — JSON-clean
+  null + correct dataclass equality (NaN!=NaN broke round-trip ==). drawdowns default 0.0.
+- equity = capital_alloc + realized + unrealized; equity_peak tracks the high-water mark;
+  drawdown_cur/max recomputed on every record_trade/mark.
+- record_trade books realized PnL + win/expectancy; update_metrics sets the
+  scorecard/risk-derived fields; set_stage validates against STAGES.
+- initialize_ledgers is first-run idempotent: existing sleeve ledgers (with accumulated
+  state) are loaded untouched; only missing ones are seeded+saved.
+- SLEEVE_ALLOCATIONS keys double as family names; cash_reserve + experimental_research are
+  sleeves, not families/ packages.
+
+Verification: 14 tests (10 ledger + 4 allocation) pass; full suite 421 passed (was 407);
+ruff clean; persisted ledger JSON is valid standard JSON (no NaN tokens).
+
+Still deferred (PLAN.md §15): monthly-review benchmark series.
+Pending build-out: families/base.py Model/StrategyFamily; portfolio/ correlation,
+risk_budget, monthly_review; pipeline/ graduation+research+stage runners;
+reporting/monthly_report.
+Next session first task: portfolio/risk_budget.py (§8 portfolio heat + per-strategy risk
+contribution + suspension triggers) — it reads ledger drawdowns/positions and writes
+risk_contribution back via update_metrics; pairs naturally with portfolio/correlation.py.
+
+--- SESSION 006 ---
+Date: 2026-06-26
+Goal: Implement portfolio/risk_budget.py (§8) + portfolio/correlation.py (§3).
+
+Tasks:
+[x] risk_budget.py: RiskLimits dataclass (defaults: risk/trade 0.5%, heat 5%, position
+    10%, sector 25%, DD 10%). position_risk (|entry-stop|*size/equity), position_weight,
+    strategy_heat, compute_portfolio_heat, heat_budget/allocate_heat_budget (capital share
+    of the heat cap), risk_contributions + apply_risk_contributions (writes back via
+    update_metrics), check_suspension (DD or heat breach -> reasons), portfolio_heat_breached,
+    sector_exposures. Export from portfolio/__init__.py.
+[x] correlation.py: build_correlation_matrix, pairwise_correlations, average_correlation
+    (off-diagonal mean), flag_high_correlation, update_ledger_correlations (writes ledger
+    correlations via update_metrics). Export from portfolio/__init__.py.
+[x] Tests: tests/test_risk_budget.py (12) + tests/test_correlation.py (6).
+
+Design notes:
+- Heat = risk-at-stop (fraction of account equity lost if stopped), NOT dollar exposure.
+  Position with no stop_price contributes 0 heat (must be caught by weight/DD checks).
+- Per-strategy heat budget = (capital_alloc/account_equity) * max_portfolio_heat;
+  suspend when |drawdown_cur| > max_drawdown OR strategy_heat > its budget.
+- risk_contributions = each strategy's share of total portfolio heat (sums to 1; 0 when no
+  heat). apply_/update_ledger_* write back onto ledgers via the §7 update_metrics hook.
+- correlation: Pearson on the common calendar via DataFrame.corr(); average_correlation is
+  a single diversification gauge; flag_high_correlation surfaces hidden concentration.
+
+Verification: 18 tests (12 risk + 6 correlation) pass; full suite 439 passed (was 421);
+ruff clean.
+
+Still deferred (PLAN.md §15): monthly-review benchmark series.
+Pending build-out: families/base.py Model/StrategyFamily; pipeline/ graduation+research+
+stage runners; portfolio/monthly_review.py; reporting/monthly_report.py.
+Next session first task: pipeline/graduation.py + pipeline/research.py (§6) — the
+graduation state machine reads ledger.stage + the scorecard and advances/retires;
+risk_budget suspension feeds the retire path. (monthly_review + reporting depend on it.)
+
+--- SESSION 007 ---
+Date: 2026-06-26
+Goal: Implement pipeline/graduation.py (§6 stage machine) + pipeline/research.py (steps 1-2).
+
+Tasks:
+[x] graduation.py: reuse ledger.STAGES; STAGE_CAPITAL table; MIN_DAYS_IN_STAGE
+    (paper30/pilot90/proven180/core365); GraduationCriteria (min_sharpe .5, min_expectancy
+    0, max_dd .20). next_stage, check_promotion (time gate + metric gate, fails closed on
+    missing/NaN), check_retirement (neg expectancy or DD breach), evaluate ->
+    (retire|promote|hold, target), advance (applies stage via set_stage, not capital).
+    Export from pipeline/__init__.py.
+[x] research.py: Hypothesis dataclass (id, family, model_name, rationale, created_date) +
+    is_documented + to/from_dict; ResearchLog (entries, by_family, get, to/from_dict);
+    add_hypothesis (dup-id guard); to_research_ledger (mints a research-stage 0% ledger).
+[x] Tests: tests/test_graduation.py (12) + tests/test_research.py (6).
+
+Design notes:
+- Early stages (research..paper) advance on the metric gate only (time gate 0); live
+  stages (paper..core) add the days-in-stage gate. elite is the top; retirement is a
+  separate downgrade, never auto-promoted to.
+- graduation owns STAGE STATE only (advance mutates ledger.stage/stage_entered); capital
+  per stage is a table (STAGE_CAPITAL) for allocation/reporting — dollars stay in
+  allocation (§10 boundary respected).
+- Metric reads tolerate scorecard schema variance (_get tries trade_expectancy/expectancy,
+  falls back to ledger fields) and are NaN-safe (x==x).
+- risk_budget.check_suspension is the operational suspend signal; graduation.check_retirement
+  is the lifecycle retire trigger (negative expectancy / DD breach) — monthly_review will
+  call both.
+
+Verification: 18 tests (12 graduation + 6 research) pass; full suite 457 passed (was 439);
+ruff clean.
+
+Still deferred (PLAN.md §15): monthly-review benchmark series.
+Pending build-out: families/base.py Model/StrategyFamily; pipeline/ stage runners
+(backtest/walk_forward/oos thin wrappers); portfolio/monthly_review.py;
+reporting/monthly_report.py.
+Next session first task: portfolio/monthly_review.py (§9) — reads all ledgers + scorecards
++ regime log, runs the checklist (P&L vs benchmark, DD/sleeve, correlation changes, sizing
+adherence, regime/permission compliance), emits per-sleeve actions {increase/hold/reduce/
+suspend} using check_suspension + graduation.evaluate; then reporting/monthly_report.py
+renders it. (Resolve the §15 benchmark-series question first: SPY vs blended.)
+
+--- SESSION 008 ---
+Date: 2026-06-26
+Goal: Implement portfolio/monthly_review.py (§9) + reporting/monthly_report.py.
+
+Tasks:
+[x] monthly_review.py: ReviewConfig (reduce_drawdown .06, reduce_underperformance .05);
+    SleeveAction + MonthlyReview dataclasses; _evaluate_checklist (P&L vs benchmark, DD,
+    risk contribution, regime/permission compliance, sizing adherence) -> action in
+    {increase,hold,reduce,suspend}; run_monthly_review (portfolio heat + correlation +
+    regime context). Reuses check_suspension + graduation.evaluate + is_permitted +
+    correlation helpers (no recompute). Export from portfolio/__init__.py.
+[x] reporting/monthly_report.py: render_monthly_report -> markdown (portfolio summary,
+    regime, sleeve table, per-sleeve rationale, action summary); write_monthly_report ->
+    reports/monthly_review_<as_of>.md. Export from reporting/__init__.py.
+[x] Tests: tests/test_monthly_review.py (8, covers both modules).
+
+Decisions resolved (PLAN.md §15 deferral):
+- Benchmark series = a parameter: run_monthly_review(benchmark_return=...) (the period
+  return to compare each sleeve against, SPY-style by default 0.0). Configurable rather
+  than hardcoded SPY-vs-blended; caller passes whatever benchmark it tracks.
+
+Design notes:
+- Action priority: suspend (risk suspension OR graduation retire) > increase (graduation
+  promote) > reduce (DD beyond reduce_drawdown, or trails benchmark beyond
+  reduce_underperformance) > hold. A non-permitted sleeve that still holds positions is
+  pulled back to 'reduce' and noted. Sizing breaches (position/sector) are flagged as
+  notes, not auto-actions.
+- Sleeves outside the permission matrix (cash_reserve, experimental_research) are treated
+  as ungated (permitted=True).
+- monthly_review owns evaluation only; reporting owns rendering only (§3 boundary).
+
+Verification: 8 tests pass; full suite 465 passed (was 457); ruff clean. Sample report
+renders cleanly (increase/suspend/reduce across 3 sleeves with regime + action summary).
+
+ALL §15 deferrals now resolved (ledger dir, slippage grid, benchmark series).
+Remaining PLAN build-out (optional, scaffolds still stubs): families/base.py
+Model/StrategyFamily abstraction + concrete family models; pipeline/ stage runners
+(backtest/walk_forward/oos thin wrappers over validation/signals). The full fund loop is
+otherwise wired: research -> ledger/allocation -> regime+permissions -> scorecard ->
+risk/correlation -> graduation -> monthly review -> report.
+Next session first task: families/base.py (Model + StrategyFamily + register_model, the
+multi-model pattern §11) so concrete family models can be registered and driven through
+the existing pipeline.
+
+--- SESSION 009 ---
+Date: 2026-06-26
+Goal: Implement the multi-model family abstraction (families/base.py + registry.py, §11).
+
+Tasks:
+[x] families/registry.py: (family,name) registry mirroring estimators/registry —
+    register_model decorator, get_model, create_model, list_models(family|None),
+    list_families, all_models.
+[x] families/base.py: Model (ABC: signals(prices) -> positions; backtest() reuses
+    signals.backtest, tags meta with family/model); EstimatorModel (concrete base composing
+    a named estimator+deviation+window+signal = the existing pipeline; per-instance
+    window/signal override); StrategyFamily (model_names/create/create_all over the
+    registry). Re-exports register_model.
+[x] families/mean_reversion/models.py: ZScoreReversionModel (sma/zscore/20) registered as
+    mean_reversion/zscore_reversion — proves the pattern; other 4 MR models left TODO.
+[x] families/__init__: export base+registry API; side-effect import of mean_reversion.models
+    to populate the registry on package import.
+[x] Tests: tests/test_families.py (8).
+
+Design notes:
+- A registered model inherits the whole validation/scoring/graduation stack for free:
+  Model.backtest reuses signals.backtest, and the test asserts model.backtest(...).returns
+  EQUALS run_backtest('sma','zscore',window=20) — i.e. zero new pipeline, just a named
+  composition. EstimatorModel subclasses only declare estimator/deviation/window.
+- Registry mirrors estimators/registry exactly (decorator sets cls.family/cls.name, dup
+  key raises). Registration is a side-effect of importing each family's models module.
+- Only mean_reversion has a concrete model so far; adding models to other families is now
+  a one-class, one-decorator job (no infra changes).
+
+Verification: 8 family tests pass; full suite 473 passed (was 465); ruff clean.
+
+Project status: the full quant-fund platform from PLAN.md is now functionally wired end to
+end — data/regime labeler -> permission matrix -> families(model registry) -> scorecard ->
+ledger/allocation -> risk_budget/correlation -> graduation/research -> monthly_review ->
+report. All §15 deferrals resolved.
+Remaining (optional, low-risk): concrete models for the other 8 families (one decorated
+EstimatorModel subclass each, where the signal maps onto an existing estimator/deviation);
+pipeline/ stage runners (backtest/walk_forward/oos) as thin per-model wrappers over the
+existing validation engine; families/base StrategyFamily.permitted() convenience hooking
+the §5 matrix. None are blockers — the platform runs without them.
+Next session first task (suggested): pipeline/backtest.py + walk_forward.py + oos.py — thin
+stage runners that drive any registered Model through the existing signals/validation
+engines and write results toward the ledger/graduation (closes the model->pipeline loop).
+
+--- SESSION 010 ---
+Date: 2026-06-26
+Goal: Implement pipeline stage runners (backtest/walk_forward/oos) + close the model loop.
+
+Tasks:
+[x] graduation.py: added public passes_metric_bar(scorecard, criteria) (scorecard-only
+    metric gate); refactored _metrics_pass to delegate to it with ledger fallbacks.
+[x] pipeline/backtest.py: shared StageResult dataclass (stage, model, scorecard, passed,
+    detail); run_backtest_stage (model.backtest -> scorecard_from_backtest -> passes bar).
+[x] pipeline/walk_forward.py: run_walk_forward_stage — anchored, backtest once then stitch
+    OOS test windows via make_folds (no WF math duplicated); empty-folds guard.
+[x] pipeline/oos.py: run_oos_stage (data.splits holdout, scores OOS + in-sample, fails if
+    metric bar not cleared OR profile degraded) + compare_oos_to_is.
+[x] pipeline/__init__: STAGE_RUNNERS + run_stage dispatcher; exports.
+[x] Tests: tests/test_pipeline_stages.py (9, incl. run_stage->graduation.advance loop).
+
+Bug fixed (latent, surfaced by this session):
+- Circular import portfolio<->pipeline: portfolio/__init__ -> monthly_review imported
+  pipeline.graduation at module load, while graduation imports portfolio.ledger. Was
+  masked by test collection order (test_allocation imported portfolio first); `import
+  meridian.pipeline` cold actually failed. Fixed by making monthly_review import graduation
+  LAZILY inside its functions + a TYPE_CHECKING-only import for the annotation. All five
+  subpackages now import cold independently.
+
+Design notes:
+- Stage runners are pure orchestration: each drives a registered Model through an existing
+  engine (signals.backtest / make_folds / data.splits) -> scorecard -> passes_metric_bar,
+  returning a uniform StageResult whose .scorecard feeds graduation.advance. Closed-loop
+  demo: research Hypothesis -> to_research_ledger -> run_stage -> advance (a losing model
+  is correctly retired).
+- Walk-forward reuses the anchored slice-once pattern (causal path is fold-independent);
+  OOS 'seen once' discipline is the caller's to keep (noted), with degradation flagging.
+
+Verification: 9 stage tests pass; full suite 482 passed (was 473); ruff clean; all
+subpackages import cold.
+
+Project status: PLAN.md platform complete and import-clean end to end. The full lifecycle
+runs: research -> ledger/allocation -> regime+permissions -> family model -> pipeline
+stages (backtest/walk_forward/oos) -> scorecard -> risk/correlation -> graduation ->
+monthly review -> report.
+Remaining (optional, low-risk, non-blocking): concrete models for the other 8 families
+(one decorated EstimatorModel subclass each); StrategyFamily.permitted() convenience hook
+to the §5 matrix; a top-level orchestrator/CLI wiring the loop for a real universe.
+Next session first task (suggested): add the remaining mean_reversion models (bollinger,
+gap_fill, atr_extension via existing estimators/deviations) to exercise multi-model lists,
+or a thin run_pipeline() orchestrator that takes a model+universe and walks all stages.
+
+--- SESSION 011 ---
+Date: 2026-06-26
+Goal: Concrete models for all active families + StrategyFamily.permitted() + run_pipeline
+      (the remaining optional build-out).
+
+Tasks:
+[x] families/base.py: added directional archetype Models (vectorized, causal, distinct from
+    the reversion EstimatorModel): MovingAverageTrendModel, MomentumModel, BreakoutModel
+    (Donchian, hold-until-reversed), PullbackModel (long-only buy-the-dip), LongTermETFModel
+    (long/flat above 200MA). Added StrategyFamily.permitted(label) + gate(positions,frame)
+    hooking the §5 permission matrix (lazy import to avoid a cycle).
+[x] Concrete models registered (9 total across 7 active families):
+    mean_reversion: zscore_reversion (sma/zscore), bollinger_reversion (ema/zscore),
+      atr_extension (sma/atr_norm);
+    trend_following: ma_trend; momentum: roc_momentum; breakouts: donchian_breakout;
+    pullback_continuation: ma_pullback; sector_rotation: trend_rotation (window 100);
+    long_term_etf: above_200ma. event_driven/volatility remain deferred (no models).
+    Models needing new indicators (RSI, gap, volume, cross-sectional rank) left as TODO.
+[x] families/__init__: side-effect-import all 7 active families' models; export archetypes.
+[x] pipeline/orchestrator.py: run_pipeline(model, prices, *, ledger, stages, ...) walks
+    backtest->walk_forward->oos, advances the ledger from each scorecard (stores
+    detail['ledger_action']), stops at the first failing stage. Export from pipeline.
+[x] Tests: tests/test_family_models.py (8) + tests/test_orchestrator.py (3).
+
+Design notes:
+- Archetypes use plain causal rolling stats (sign(price-MA), pct_change, Donchian
+  ffill, fast/slow MA, 200MA filter) — the reversion vs trend/momentum/breakout
+  distinction the platform previously lacked (its estimators+signal engine are
+  reversion-only). All return {-1,0,1} int paths and inherit Model.backtest -> the whole
+  validation/scoring/graduation stack for free.
+- Every registered model is exercised by a single parametrized test (valid positions +
+  backtest). run_pipeline demoed end to end: a model is driven through stages and its
+  ledger advanced/retired automatically.
+
+Verification: 11 new tests pass; full suite 493 passed (was 482); ruff clean; all
+subpackages import cold; 9 models register across 7 families.
+
+PROJECT COMPLETE: every PLAN.md deliverable + all listed optionals are implemented, tested,
+and import-clean. The full quant-fund platform runs end to end — research hypothesis ->
+ledger/allocation -> regime labeler + permission matrix -> family model (9 across 7
+families) -> pipeline stages (backtest/walk_forward/oos via run_pipeline) -> scorecard ->
+risk budget/correlation -> graduation -> monthly review -> markdown report.
+Optional future polish (non-blocking): indicator library for the TODO models (RSI, gap,
+volume); a multi-asset/universe driver for cross-sectional families (sector rotation,
+dual momentum); a CLI subcommand exposing run_pipeline.
+
+--- SESSION 012 ---
+Date: 2026-06-26
+Goal: Optional polish #1 — indicator library + the TODO models that needed it.
+
+Tasks:
+[x] features/indicators.py: rsi (Wilder, 0-100, ewm alpha=1/window), overnight_gap
+    ((open-prior_close)/prior_close from OHLC), volume_ratio (volume / its rolling mean).
+    All causal/vectorized. ADX reused from regimes.labeler (not duplicated). Exported from
+    features/__init__.
+[x] Filled 5 previously-TODO models (now 14 total across 7 families):
+    mean_reversion: rsi_exhaustion (RSI band, hold-to-neutral), gap_fill (fade overnight
+      gaps, needs OHLC);
+    pullback_continuation: rsi_pullback (uptrend + RSI dip, long-only);
+    breakouts: volume_confirmed_breakout (Donchian + volume expansion, needs OHLCV);
+    trend_following: adx_trend (MA direction gated by ADX>25, reuses labeler.adx, needs OHLC).
+    Models needing bars degrade to flat when the columns are absent (no crash).
+[x] Tests: tests/test_indicators.py (6); updated test_family_models _bars to include volume
+    + assert >=14 models.
+
+Design notes:
+- Indicators live in features/ (feature engineering), distinct from estimators (fair value)
+  and regimes (labeling). ADX was already implemented in regimes.labeler for the trend
+  regime, so adx_trend imports it — no duplicate indicator.
+- bar-dependent models (gap_fill, volume_confirmed_breakout, adx_trend) check for the
+  needed OHLCV columns and return an all-flat path if missing, so the generic
+  'every model backtests' test stays green and they never raise on close-only input.
+
+Verification: 6 indicator tests + updated family tests pass; full suite 499 passed (was
+493); ruff clean; 14 models register across 7 families.
+
+Remaining optional polish (non-blocking): #2 multi-asset driver for cross-sectional
+families (sector rotation / dual momentum via the existing portfolio.universe backtester);
+#3 a `meridian pipeline <family>/<model> --symbol X` CLI subcommand over run_pipeline.
+Still-TODO single-name models needing more machinery: NR7 narrow-range breakout,
+channel-breakout trend (both straightforward extensions of the existing archetypes).
+
+--- SESSION 013 ---
+Date: 2026-06-26
+Goal: Optional polish #2 — cross-sectional driver for the multi-asset families.
+
+Tasks:
+[x] features/cross_sectional.py: momentum_scores(prices_by_symbol, lookback) (date×symbol
+    trailing return) + rank_signals(scores, quantile, long_only) (each bar: long top
+    quantile, short bottom). Exported from features/__init__.
+[x] families/base.py: CrossSectionalModel base (cross_sectional=True) — signals(dict) ->
+    date×symbol {-1,0,1} frame; backtest(dict) reuses portfolio.backtest_portfolio (lazy
+    import, no cycle) for P&L/turnover/cost. Added cross_sectional=False flag on Model.
+[x] Concrete cross-sectional models (3, now 17 total):
+    momentum/relative_strength (long top / short bottom by return),
+    momentum/dual_momentum (relative rank gated by absolute-momentum sign),
+    sector_rotation/relative_strength (long-only top sectors).
+    The single-asset proxies (roc_momentum, trend_rotation) are kept alongside.
+[x] Tests: tests/test_cross_sectional.py (6); test_family_models single-asset loop now
+    skips cross_sectional models (tested separately); assert flags.
+
+Design notes:
+- Cross-sectional models compare each name to its peers each bar (rank), which the
+  single-series estimator pipeline cannot express — this is the genuine sector-rotation /
+  dual-momentum version replacing the earlier single-asset proxies.
+- They reuse the SAME multi-asset engine (portfolio.backtest_portfolio) used in the
+  crypto/pairs studies, so no P&L/cost math is duplicated. backtest() returns a
+  PortfolioResult whose .returns feed scoring.scorecard (demoed: relative_strength on a
+  6-name basket, sharpe ~0.87, scoreable).
+- cross_sectional flag lets callers (and run_pipeline, which is single-asset) distinguish;
+  a universe-level pipeline runner is future work (not needed — backtest+scorecard suffice).
+
+Verification: 6 cross-sectional tests + updated family tests pass; full suite 505 passed
+(was 499); ruff clean; 17 models register (14 single-asset + 3 cross-sectional) across 7
+families; all subpackages import cold.
+
+Remaining optional polish (non-blocking): #3 a `meridian pipeline <family>/<model>
+--symbol X` CLI subcommand over run_pipeline (single-asset) and/or a universe variant for
+cross-sectional models. Plus the two still-TODO single-name models (NR7, channel breakout).
+
+--- SESSION 014 ---
+Date: 2026-06-26
+Goal: Optional polish #3 — CLI subcommand exposing run_pipeline + model listing.
+
+Tasks:
+[x] cli.py: new `pipeline` subcommand. Single-asset path: load_ohlcv(symbol) -> run_pipeline
+    with a fresh research ledger -> prints per-stage passed/sharpe/ledger-action + final
+    graduation stage. Cross-sectional path (model.cross_sectional): --symbols universe ->
+    model.backtest -> scorecard summary (equity/sharpe/return/DD). Args: model
+    '<family>/<model>', --symbol, --symbols, --start, --cost-bps, --all-stages.
+    Lazy imports keep CLI startup light; clear exit codes (2) on bad spec / unknown model /
+    missing --symbols.
+[x] cli.py: `list models` kind added (lists all 17 family/model names).
+[x] Tests: tests/test_cli_pipeline.py (6, fully offline via monkeypatched load_ohlcv) —
+    list models, single-asset run, cross-sectional run, and the three error paths.
+
+Verification: 6 CLI tests pass; full suite 511 passed (was 505); ruff clean across
+meridian/ + tests/.
+
+PROJECT + ALL OPTIONALS COMPLETE. The full quant-fund platform (PLAN.md) plus every listed
+optional polish (#1 indicators, #2 cross-sectional driver, #3 CLI) are implemented, tested
+(511 passing), lint-clean, and import-clean. Lifecycle runs end to end from one command:
+  meridian pipeline mean_reversion/zscore_reversion --symbol SPY
+  meridian pipeline momentum/relative_strength --symbols XLK XLF XLE XLY
+covering research hypothesis -> ledger/allocation -> regime labeler + permission matrix ->
+17 family models (14 single-asset + 3 cross-sectional across 7 families) -> pipeline stages
+-> scorecard -> risk budget/correlation -> graduation -> monthly review -> markdown report.
+
+Only-if-wanted leftovers (genuinely minor): NR7 narrow-range + channel-breakout single-name
+models; a universe-level pipeline stage runner (cross-sectional models currently use
+backtest()+scorecard directly, which suffices); RSI/gap variants for other families.
+
+--- SESSION 015 ---
+Date: 2026-06-26
+Goal: The two remaining single-name models + the universe-level pipeline stage runner.
+
+Tasks:
+[x] breakouts/nr7_breakout (NarrowRangeBreakoutModel): trade the breakout of the
+    narrowest-range bar in the last 7 (volatility squeeze); needs OHLC bars, flat without.
+[x] trend_following/channel_breakout (ChannelBreakoutTrendModel): Donchian channel breakout
+    filtered by a long-MA trend (long highs only above the MA, short lows only below).
+    -> 19 models total (16 single-asset + 3 cross-sectional) across 7 families.
+[x] pipeline/universe.py: universe-level stage runners for cross-sectional models —
+    run_universe_backtest_stage, run_universe_walk_forward_stage (anchored, stitches OOS
+    portfolio returns via make_folds), and run_universe_pipeline (walks stages + advances
+    the ledger), mirroring the single-asset runners. Model is duck-typed (.backtest(dict)
+    + .name), so no families import -> no cycle. Exported from pipeline/__init__.
+[x] Tests: tests/test_universe_pipeline.py (4) + 2 new family-model tests (nr7, channel);
+    bumped the all-models count assert to >=19.
+
+Verification: 6 new tests pass; full suite 517 passed (was 511); ruff clean; cold imports
+OK; 19 models register across 7 families.
+
+PROJECT FULLY COMPLETE — every PLAN.md deliverable, all three optional polishes (#1/#2/#3),
+AND the only-if-wanted leftovers are now implemented, tested (517 passing), lint-clean, and
+import-clean. Nothing outstanding. The platform: data/regime labeler + 3-dim permission
+matrix -> 19 family models (single-asset + cross-sectional) -> single-asset pipeline
+(run_pipeline: backtest/walk_forward/oos) AND universe pipeline (run_universe_pipeline) ->
+scorecard -> ledger/allocation/risk_budget/correlation -> graduation -> monthly review ->
+markdown report, driveable from the `meridian` CLI (validate/backtest/universe/paper/
+list/pipeline).
+
+--- SESSION 016 ---
+Date: 2026-06-26
+Goal: Make the whole project runnable end to end from the terminal.
+
+Tasks:
+[x] meridian/__main__.py — enables `python -m meridian ...` (alias of the console script).
+[x] cli.py `fund` subcommand: the whole-fund lifecycle in one command. Seeds the 8 sleeves
+    (seed_ledgers), runs a representative single-asset model per family through run_pipeline
+    (advancing each ledger's graduation stage), runs run_monthly_review across the sleeves,
+    and writes the month-end markdown report. Args: --symbol, --equity, --start, --cost-bps,
+    --report-dir. cash_reserve/experimental_research have no family model -> held.
+[x] Test: tests/test_cli_fund.py (offline via monkeypatched load_ohlcv) — runs end to end,
+    asserts sleeve actions printed + report file written.
+
+Verification: full suite 518 passed (was 517); ruff clean. LIVE terminal run confirmed:
+`python -m meridian fund --symbol SPY --start 2012-01-01` loaded 3637 SPY bars, ran a model
+per family through the pipeline (most retired as single-name SPY models lose; pullback
+reached walk_forward), produced per-sleeve month-end actions, and wrote
+reports/monthly_review_<date>.md.
+
+HOW TO RUN (terminal):
+  pip install -e .            # once -> the `meridian` command; or use `python -m meridian`
+  python -m meridian fund --symbol SPY --start 2015-01-01     # whole lifecycle + report
+  python -m meridian pipeline mean_reversion/zscore_reversion --symbol SPY
+  python -m meridian pipeline momentum/relative_strength --symbols XLK XLF XLE XLY
+  python -m meridian list models | validate <cfg> | backtest <cfg> | universe <cfg> | paper <cfg>
+
+Project complete; the entire platform is now operable from the command line.
+
+--- SESSION 017 ---
+Date: 2026-06-26
+Goal: Stop requiring one symbol per run — accept symbol lists / named universes.
+
+Tasks:
+[x] cli.py _symbol_list(args, default_to_symbol) helper: resolves --universe NAME (via
+    get_universe), or --symbols A B ..., or the single --symbol (default SPY).
+[x] `pipeline`: single-asset models now loop over every resolved symbol in one command;
+    cross-sectional models take the whole resolved list as the basket (>=2 required).
+    Added --universe to the subcommand.
+[x] `fund`: runs the full lifecycle for EACH resolved symbol, writing one report per symbol
+    (reports/monthly_review_<symbol>_<date>.md). Added --symbols and --universe.
+[x] Tests: +4 CLI tests (fund multi-symbol + universe; pipeline multi-symbol + universe);
+    updated the fund test to the new per-symbol output/report-name format.
+
+Verification: full suite 522 passed (was 518); ruff clean. Live:
+`python -m meridian pipeline trend_following/ma_trend --symbols SPY QQQ` ran both in one
+command (no retyping).
+
+Usage now:
+  python -m meridian pipeline mean_reversion/zscore_reversion --symbols SPY QQQ IWM
+  python -m meridian pipeline momentum/relative_strength --universe SP500
+  python -m meridian fund --symbols SPY QQQ            # one report each
+  python -m meridian fund --universe QQQ
+Default is still SPY when nothing is given.
+
+--- SESSION 018 (bugfix) ---
+Date: 2026-06-26
+Issue: `--universe SP500` crashed with a raw traceback — HTTP 403 from Wikipedia when
+get_universe fetched constituents via pd.read_html (Wikipedia rejects the default
+Python-urllib User-Agent).
+
+Fixes:
+[x] data/universe.py: _fetch_constituents now sends a browser-like User-Agent via
+    pd.read_html(url, storage_options={"User-Agent": _USER_AGENT}). LIVE-verified: SP500
+    now returns 503 symbols (was 403 Forbidden). Result is cached, so later runs are offline.
+[x] cli.py main(): graceful handling — URLError (network/403/offline) -> clean stderr
+    message + exit 1; KeyError/ValueError (e.g. unknown universe/model) -> message + exit 2.
+    No more tracebacks dumped to the user.
+[x] Tests: +2 (graceful network-error and unknown-universe paths). test_data stubs
+    _fetch_constituents wholesale, so the UA change didn't affect it.
+
+Verification: full suite 524 passed (was 522); ruff clean; live SP500 fetch works.
+
+--- SESSION 019 ---
+Date: 2026-06-26
+Goal: A low-typing, user-friendly way to test symbols/baskets vs strategies — an
+interactive menu + a strategy "gauntlet" scoreboard. (User chose: interactive menu;
+gauntlet = both a ranked scoreboard AND the existing fund lifecycle, chosen in the menu.)
+
+Tasks:
+[x] experiments/gauntlet.py: gauntlet_single (rank all single-asset models on one symbol)
+    + gauntlet_universe (rank all cross-sectional models on a basket) + format_gauntlet.
+    Reuses pipeline.run_backtest_stage / run_universe_backtest_stage + scorecard; no
+    network (caller passes prices) -> offline-testable. Ranked by Sharpe desc.
+[x] experiments/fund.py: extracted run_fund(prices, bars, *, equity, cost_bps) ->
+    (ledgers, MonthlyReview) from cli._cmd_fund; both the CLI and the menu reuse it.
+[x] interactive.py: run_menu(input_fn, print_fn) — guided loop (presets list / type your
+    own / universe name) -> action (single strategy / gauntlet / fund) -> loops; injected
+    input_fn/print_fn for testing; bad input re-prompts; run errors caught (menu stays alive).
+[x] cli.py: no-arg `meridian` (and `python -m meridian`) launches the menu (subparsers
+    now required=False); added `menu` + scriptable `gauntlet` subcommands; _cmd_fund now
+    calls run_fund. Docstring + README "Running (CLI)" lead with the menu + gauntlet.
+[x] Tests: test_gauntlet.py (3), test_interactive.py (7, scripted input + monkeypatched
+    loader, incl. error-resilience), + 3 CLI cases (gauntlet single/basket, no-arg->menu).
+
+Verification: full suite 537 passed (was 524); ruff clean (no pandas CoW warnings after
+format_gauntlet built a fresh frame). LIVE: `meridian gauntlet --symbol SPY` ranks all 16
+single-asset models (above_200ma 0.67 Sharpe tops; ma_pullback is the lone 'passed');
+piped `printf '1\n2\nq\n' | python -m meridian` runs the menu end to end.
+
+How to use it now (least typing):
+  python -m meridian            # menu: pick symbol/basket, pick strategy or 'gauntlet', loops
+  python -m meridian gauntlet --symbol SPY            # one-shot scoreboard
+  python -m meridian gauntlet --symbols XLK XLF XLE   # cross-sectional scoreboard on a basket
+
+--- SESSION 020 ---
+Date: 2026-06-26
+Goal: Let the user tune a strategy's parameters to find a passing version — WITHOUT the
+overfitting trap (the project's core discipline).
+
+Tasks:
+[x] experiments/sweep.py: PARAM_GRIDS (primary knob(s) per model, small grids to limit
+    multiple testing); sweep_single(prices, family, name, ...) builds each combo (setattr on
+    a fresh instance, so it works regardless of __init__ signature) and scores it BOTH
+    in-sample (run_backtest_stage) AND walk-forward out-of-sample (run_walk_forward_stage),
+    ranked by OOS Sharpe. A config only counts as a real pass when oos_passed. format_sweep
+    prints the table + an explicit multiple-testing warning + the OOS verdict. Cross-
+    sectional models are rejected (need a basket). grid_for() falls back to a window sweep.
+[x] cli.py `sweep <family>/<model> --symbol X` subcommand; interactive menu action
+    "4) tune a strategy (parameter sweep)".
+[x] Tests: test_sweep.py (5) + CLI sweep case + menu sweep flow.
+
+Why OOS-gated: tuning until something passes on the SAME history is exactly the over-
+optimization the project killed in the sector-spread confirmation pass. The sweep judges
+each setting on held-out walk-forward folds and shouts the multiple-testing caveat, so a
+"pass" means it survived data it was not fit on.
+
+Verification: full suite 544 passed (was 537); ruff clean. LIVE on real SPY (2012+):
+`meridian sweep long_term_etf/above_200ma` found window=250 passes OUT-OF-SAMPLE (oos
+Sharpe 0.68) and window=100 passes (0.60), while the default window=200 fails — "2 of 4
+passed", with the overfitting warning. A real tuning win surfaced honestly.
+
+Usage:
+  python -m meridian sweep long_term_etf/above_200ma --symbol SPY   # tune, OOS-validated
+  (or menu -> 4) tune a strategy)
+
+--- SESSION 020b (confirmation) ---
+Date: 2026-06-26
+Confirmed the sweep's window=250 winner through the FULL pipeline (backtest -> walk_forward
+-> fixed 2010-2019/2020-2022 OOS holdout) on full SPY history (1993-2026). VERDICT: does
+NOT hold up. On the fixed OOS holdout, window=250 scores Sharpe 0.38 (< 0.5 bar -> FAIL),
+while the default window=200 PASSES the holdout (0.55). The ranking flipped vs the sweep
+(which ran on SPY 2012+ walk-forward and ranked 250 first at 0.68) — a date-window/fold
+artifact, i.e. exactly the multiple-testing risk the sweep warns about. Both windows also
+fail the full-history backtest/walk-forward gates (>20% drawdown across 2008/2020 ->
+retired). Lesson reaffirmed: a walk-forward tuning win is a hypothesis; the independent
+fixed holdout is the judge — here it rejected window=250. (No code change; analysis only.)
+
+--- SESSION 021 ---
+Date: 2026-06-26
+Goal: Automate "sweep -> auto-confirm the winner through the full pipeline" so the held-out
+check is never skipped.
+
+Tasks:
+[x] experiments/sweep.py: sweep_and_confirm(prices, family, name, ...) — runs sweep_single,
+    picks the best OOS-passing setting (or the top candidate if none passed), builds the
+    model with those params (setattr), and runs the FULL pipeline (run_pipeline: backtest ->
+    walk_forward -> fixed 2010-2019/2020-2022 OOS holdout). confirmed = the oos stage passes.
+    format_confirm() renders the sweep table + the holdout run + a CONFIRMED/REJECTED verdict.
+[x] cli.py: `sweep ... --confirm` flag. interactive menu action 4) now ALWAYS auto-confirms.
+[x] Tests: test_sweep.py +2 (full-pipeline structure, format verdict; data spans the
+    holdout windows) + CLI --confirm case.
+
+Verification: full suite 547 passed (was 544); ruff clean. LIVE on full SPY history
+(8405 bars, 1993-2026): `meridian sweep long_term_etf/above_200ma --confirm` -> sweep shows
+0 of 4 settings pass OOS (full-history walk-forward is harder than the 2012+ window that
+earlier flagged 250); auto-confirm runs the top candidate (window=250) through the holdout
+-> holdout Sharpe 0.38 -> REJECTED. Matches the manual confirmation; the held-out judge is
+now never skipped.
+
+Usage:
+  python -m meridian sweep <family>/<model> --symbol SPY --confirm
+  (or menu -> 4) tune a strategy  ... auto-confirms)

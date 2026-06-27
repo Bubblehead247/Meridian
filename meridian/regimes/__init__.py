@@ -11,6 +11,13 @@ filter on signals.
 from meridian.regimes import classifiers  # noqa: F401
 from meridian.regimes.base import UNKNOWN, BaseRegime, RollingRegime
 from meridian.regimes.filter import classify, gate_positions, run_gated_backtest
+from meridian.regimes.labeler import (
+    RegimeLabel,
+    attach_regimes,
+    breadth_pct,
+    build_regime_frame,
+    regime_frame,
+)
 from meridian.regimes.registry import (
     all_regimes,
     create,
@@ -31,4 +38,9 @@ __all__ = [
     "classify",
     "gate_positions",
     "run_gated_backtest",
+    "RegimeLabel",
+    "regime_frame",
+    "build_regime_frame",
+    "breadth_pct",
+    "attach_regimes",
 ]
