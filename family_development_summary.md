@@ -147,11 +147,83 @@ walk_forward → OOS). All 75 saved records.
 
 ---
 
+## S&P 500 Universe Scan (Session 3)
+
+All 503 S&P 500 constituents were run through the full single-asset gauntlet
+(33 models each), and the top 5 per family were advanced through the pipeline.
+
+**Scan summary:**
+- 503 symbols × 33 models = 16,599 backtests
+- 1,720 gauntlet passers (10.4% pass rate)
+- 34 top-5 candidates selected
+- 30 records saved (4 sector_rotation failures)
+
+**Total records: 138**
+
+### Top performers by family
+
+| Family | Best symbol | Model | Stage | Sharpe |
+|---|---|---|---|---|
+| `trend_following` | TRGP | `chandelier_trend` | OOS | **1.84** |
+| `trend_following` | PLTR | `ma_trend_long_only` | WFO | 1.70 |
+| `momentum` | PLTR | `roc_momentum_200ma` | WFO | 1.70 |
+| `pullback_continuation` | EXE | `ma_pullback` | OOS | 1.49 |
+| `mean_reversion` | PLTR | `rsi_reversion_ma_filter` | WFO | 1.38 |
+| `breakouts` | TRGP | `turtle_ma_exit` | OOS | 1.38 |
+| `mean_reversion` | DDOG | `bollinger_reversion_long_only` | WFO | 1.27 |
+| `breakouts` | CRWD | `donchian_long_only` | WFO | 1.26 |
+| `pullback_continuation` | CTVA | `rsi_pullback_continuation` | OOS | 1.15 |
+| `momentum` | VRT | `swing_momentum` | OOS | 0.66 |
+| `long_term_etf` | IR | `above_200ma` | OOS | 0.67 |
+| `sector_rotation` | HII | `trend_rotation` | WFO | 0.44 |
+
+### Cross-family standout stocks
+
+- **TRGP** (Targa Resources, energy): strongest single stock — OOS 1.84 on
+  `chandelier_trend`, OOS 1.38 on `turtle_ma_exit`. Energy trending behavior
+  dominates across both families.
+- **PLTR** (Palantir): appears in momentum (WFO 1.70), trend_following (WFO 1.59),
+  pullback_continuation (OOS 0.70), and mean_reversion (WFO 1.38). Extremely
+  volatile growth stock — every family finds a signal in it.
+- **VRT** (Vertiv Holdings): top of the gauntlet (sh=1.40) on `swing_momentum`;
+  also strong in trend_following and breakouts.
+- **CRWD** (CrowdStrike): breakout-dominant — both `donchian_long_only` (WFO 1.26)
+  and `donchian_ma_exit` (WFO 1.09).
+- **DDOG** (Datadog): best mean-reversion stock in the universe — two different
+  models both at WFO level.
+
+### Sector rotation results
+
+4 of 5 top candidates failed the pipeline (`trend_rotation` on APP, VRT, MRNA,
+DELL). Only HII cleared at walk_forward (Sharpe 0.44). The `trend_rotation`
+model is only meaningful as a cross-sectional model applied to sector ETFs, not
+individual stocks — these single-stock failures are expected. Sector rotation
+remains a CS-only family for production purposes.
+
+### Nature-correct model performance on S&P 500
+
+| Model | Symbol | OOS/WFO | Sharpe | Assessment |
+|---|---|---|---|---|
+| `chandelier_trend` | TRGP | OOS | 1.84 | Excellent — nature-correct TF performing best |
+| `chandelier_trend` | VRT | OOS | 1.10 | Strong |
+| `rsi_pullback_continuation` | CTVA | OOS | 1.15 | Strong |
+| `rsi_pullback_continuation` | PLTR | WFO | 1.25 | Good |
+| `swing_momentum` | VRT | OOS | 0.66 | Marginal — needs more symbols to confirm |
+
+### Families ready for paper trading consideration
+
+- **`trend_following`**: `chandelier_trend` now has OOS evidence on TRGP (1.84),
+  VRT (1.10), and sector ETFs. Strong candidate for paper.
+- **`pullback_continuation`**: `rsi_pullback_continuation` OOS on CTVA (1.15) and
+  WFO on PLTR (1.25), plus 22+ OOS records from sector ETFs.
+- **`breakouts`**: `turtle_ma_exit` OOS on TRGP (1.38) is the first strong OOS
+  breakout record on an individual stock.
+
+---
+
 ## Next Step
 
-Run the full S&P 500 constituent universe through the single-asset gauntlet for
-all families, identify the top-N passers per family, run them through the full
-pipeline, and save records. This will:
-- Give mean reversion and breakout families broad equity coverage
-- Surface which sectors and market caps each family works best on
-- Build the evidence base needed to move `pullback_continuation` to paper trading
+- Advance `chandelier_trend` (TRGP, VRT) and `turtle_ma_exit` (TRGP) to paper
+  trading stage — they have sufficient OOS evidence
+- Run `swing_momentum` on more symbols to build OOS evidence base before paper
+- Investigate `sector_rotation` CS models on broader baskets (not individual stocks)
