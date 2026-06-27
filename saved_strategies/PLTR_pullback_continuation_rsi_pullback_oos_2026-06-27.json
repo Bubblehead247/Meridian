@@ -47,7 +47,7 @@
   "ledger": {
     "name": "pullback_continuation",
     "family": "pullback_continuation",
-    "stage": "paper",
+    "stage": "oos",
     "stage_entered": "2026-06-27",
     "capital_alloc": 10000.0,
     "open_positions": [],

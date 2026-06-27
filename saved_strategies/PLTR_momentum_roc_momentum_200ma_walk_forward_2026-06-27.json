@@ -40,7 +40,7 @@
   "ledger": {
     "name": "momentum",
     "family": "momentum",
-    "stage": "paper",
+    "stage": "walk_forward",
     "stage_entered": "2026-06-27",
     "capital_alloc": 15000.0,
     "open_positions": [],
