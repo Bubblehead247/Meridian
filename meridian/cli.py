@@ -401,7 +401,7 @@ def build_parser() -> argparse.ArgumentParser:
     rp = sub.add_parser(
         "run-paper", help="Compute today's signals for all paper-stage strategies and send orders"
     )
-    rp.add_argument("--equity", type=float, default=100_000.0,
+    rp.add_argument("--equity", type=float, default=10_000.0,
                     help="Total account equity for position sizing")
     rp.add_argument("--start", default=None,
                     help="Earliest date to fetch for indicator warmup (default: 2023-01-01)")
