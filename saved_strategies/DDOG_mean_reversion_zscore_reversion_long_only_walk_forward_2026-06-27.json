@@ -40,7 +40,7 @@
   "ledger": {
     "name": "mean_reversion",
     "family": "mean_reversion",
-    "stage": "oos",
+    "stage": "paper",
     "stage_entered": "2026-06-27",
     "capital_alloc": 15000.0,
     "open_positions": [],

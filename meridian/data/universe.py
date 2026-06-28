@@ -45,7 +45,7 @@ _ETF_UNIVERSES: dict[str, Universe] = {
 _INDEX_SOURCES: dict[str, tuple[str, str]] = {
     "SP500": ("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies", "Symbol"),
     "NASDAQ100": ("https://en.wikipedia.org/wiki/Nasdaq-100", "Ticker"),
-    "RUSSELL1000": ("https://en.wikipedia.org/wiki/Russell_1000_Index", "Ticker"),
+    "RUSSELL1000": ("https://en.wikipedia.org/wiki/Russell_1000_Index", "Symbol"),
 }
 
 #: Names of every universe Meridian knows about.
@@ -57,13 +57,18 @@ def _normalize_symbol(sym: str) -> str:
     return sym.strip().upper().replace(".", "-")
 
 
+# Wikipedia (and many sites) reject the default ``Python-urllib`` agent with HTTP 403;
+# send a browser-like User-Agent so the constituent fetch succeeds.
+_USER_AGENT = "Mozilla/5.0 (compatible; Meridian/1.0; +https://example.com/meridian)"
+
+
 def _fetch_constituents(url: str, symbol_col: str) -> tuple[str, ...]:
     """Read an index's constituent tickers from a Wikipedia table.
 
     Scans every table on the page for one containing ``symbol_col`` and returns
     its symbols. Kept thin so tests can monkeypatch ``pandas.read_html``.
     """
-    tables = pd.read_html(url)
+    tables = pd.read_html(url, storage_options={"User-Agent": _USER_AGENT})
     for table in tables:
         if symbol_col in table.columns:
             symbols = table[symbol_col].astype(str).map(_normalize_symbol)
