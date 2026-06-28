@@ -2,7 +2,7 @@
   "family": "sector_rotation",
   "model": "relative_strength_b1",
   "symbol": "SECTORS",
-  "stage_passed": "paper",
+  "stage_passed": "retired",
   "saved_at": "2026-06-27",
   "scorecard": {
     "n_periods": 756,
