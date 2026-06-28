@@ -165,3 +165,18 @@ class MABondRotationCSModel(CrossSectionalModel):
                     sig.loc[dt, row.idxmax()] = 1
 
         return sig
+
+
+@register_model("long_term_etf", "ma_bond_rotation_cs_b126")
+class MABondRotationCSB126Model(MABondRotationCSModel):
+    """MA bond rotation with 6-month (126-day) bond lookback.
+
+    The 63-day default underperforms in 2022 because managed-futures ETFs
+    (KMLM, DBMF) need ~6 months of trend history to build a clear momentum
+    advantage over short-duration bonds. The 126-day window correctly selects
+    KMLM for 194/252 bars in 2022 vs 156 bars at 63 days.
+
+    Recommended basket: equity + IEF + KMLM (e.g. SPY IEF KMLM).
+    """
+
+    bond_lookback: int = 126

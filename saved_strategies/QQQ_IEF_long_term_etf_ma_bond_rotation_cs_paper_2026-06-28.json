@@ -2,7 +2,7 @@
   "family": "long_term_etf",
   "model": "ma_bond_rotation_cs",
   "symbol": "QQQ_IEF",
-  "stage_passed": "paper",
+  "stage_passed": "retired",
   "saved_at": "2026-06-28",
   "scorecard": {
     "n_periods": 756,
