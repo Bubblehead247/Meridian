@@ -294,6 +294,35 @@ def _cmd_sweep(args) -> int:
     return 0
 
 
+def _cmd_run_paper(args) -> int:
+    """Compute today's signals for every paper-stage strategy and (optionally) send orders."""
+    from meridian.execution.broker import AlpacaBroker, SimulatedBroker
+    from meridian.execution.live_runner import print_session_report, run_paper_session
+
+    if args.dry_run:
+        broker = SimulatedBroker(cash=args.equity)
+    else:
+        try:
+            broker = AlpacaBroker(paper=not args.live)
+        except (ImportError, ValueError) as exc:
+            print(f"Broker init failed: {exc}", file=sys.stderr)
+            print("Use --dry-run to preview signals without a broker connection.", file=sys.stderr)
+            return 1
+
+    decisions = run_paper_session(
+        broker,
+        account_equity=args.equity,
+        price_start=args.start or "2023-01-01",
+        dry_run=args.dry_run,
+    )
+    print_session_report(decisions)
+
+    active = sum(1 for d in decisions if not d.skipped)
+    orders = sum(len(d.orders) for d in decisions)
+    print(f"Done: {active} strategies processed, {orders} orders {'previewed' if args.dry_run else 'sent'}.")
+    return 0
+
+
 def _cmd_menu(args) -> int:
     from meridian.interactive import run_menu
 
@@ -368,6 +397,19 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--confirm", action="store_true",
                     help="Auto-confirm the winning setting through the full fixed-OOS holdout")
     sp.set_defaults(func=_cmd_sweep)
+
+    rp = sub.add_parser(
+        "run-paper", help="Compute today's signals for all paper-stage strategies and send orders"
+    )
+    rp.add_argument("--equity", type=float, default=100_000.0,
+                    help="Total account equity for position sizing")
+    rp.add_argument("--start", default=None,
+                    help="Earliest date to fetch for indicator warmup (default: 2023-01-01)")
+    rp.add_argument("--dry-run", action="store_true", dest="dry_run",
+                    help="Compute signals and sizes but do not send orders to the broker")
+    rp.add_argument("--live", action="store_true",
+                    help="Use the live Alpaca endpoint instead of paper (default: paper)")
+    rp.set_defaults(func=_cmd_run_paper)
 
     mp = sub.add_parser("menu", help="Launch the interactive menu (same as no command)")
     mp.set_defaults(func=_cmd_menu)
