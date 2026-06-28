@@ -2,7 +2,7 @@
   "family": "long_term_etf",
   "model": "dual_momentum_cs",
   "symbol": "SPY_TLT_IEF_GLD",
-  "stage_passed": "paper",
+  "stage_passed": "retired",
   "saved_at": "2026-06-28",
   "scorecard": {
     "n_periods": 7653,
