@@ -25,6 +25,7 @@ class PortfolioResult:
     weights: pd.Series | pd.DataFrame  # held weights (already lagged), per symbol
     gross_exposure: pd.Series   # sum of |weight| held each bar
     returns_by_symbol: pd.DataFrame  # per-symbol returns (for Monte-Carlo)
+    turnover_series: pd.Series = field(default_factory=pd.Series)  # per-bar two-sided turnover
     meta: dict = field(default_factory=dict)
 
 
@@ -81,5 +82,6 @@ def backtest_portfolio(
         weights=held,
         gross_exposure=held.abs().sum(axis=1),
         returns_by_symbol=returns,
+        turnover_series=turnover,
         meta={"sizing": sizing, "cost_bps": cost_bps, "n_symbols": signals.shape[1]},
     )

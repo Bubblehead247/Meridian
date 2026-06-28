@@ -47,8 +47,12 @@ def test_gauntlet_single_ranks_all_single_asset_models():
 def test_gauntlet_universe_ranks_cross_sectional_models():
     df = gauntlet_universe(_universe())
     assert list(df.columns) == _COLS
-    assert set(df["model"]) <= {"relative_strength", "dual_momentum"}
     assert len(df) >= 3
+    # Verify no single-asset models bled into the universe gauntlet
+    from meridian.families import create_model
+    for _, row in df.iterrows():
+        m = create_model(row["family"], row["model"])
+        assert getattr(m, "cross_sectional", False), f"{row['model']} is not a CS model"
 
 
 def test_format_gauntlet_renders_a_table():

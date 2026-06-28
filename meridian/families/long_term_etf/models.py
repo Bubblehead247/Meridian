@@ -11,7 +11,63 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from meridian.families.base import LongTermETFModel, Model, register_model
+from meridian.families.base import CrossSectionalModel, LongTermETFModel, Model, register_model
+
+
+@register_model("long_term_etf", "dual_momentum_cs")
+class DualMomentumCSModel(CrossSectionalModel):
+    """Antonacci dual momentum over a basket (e.g. SPY / TLT / GLD).
+
+    Each bar, rank all assets by their trailing ``lookback``-bar return (12-month
+    default).  Hold the top-ranked asset only when it has a positive absolute
+    return (absolute-momentum gate); otherwise go to cash.  One asset at a time.
+
+    ``buffer_pct`` implements hysteresis: the challenger must beat the current
+    holding by at least this margin in 12-month return before a rotation fires,
+    preventing daily flip-flopping when two assets rank nearly identically.
+    """
+
+    lookback: int = 252      # 12-month ranking window
+    buffer_pct: float = 0.02 # challenger must beat current holding by ≥ 2 pct-points
+    long_only: bool = True
+
+    def signals(self, prices_by_symbol: dict[str, pd.Series]) -> pd.DataFrame:
+        from meridian.features.cross_sectional import momentum_scores
+
+        scores = momentum_scores(prices_by_symbol, self.lookback)
+        sig = pd.DataFrame(0, index=scores.index, columns=scores.columns, dtype=int)
+
+        current: str | None = None      # currently held asset
+
+        for dt in scores.index:
+            row = scores.loc[dt].dropna()
+            if row.empty:
+                current = None
+                continue
+
+            best = row.idxmax()
+            cur_in = current is not None and current in row.index
+
+            if not cur_in:
+                # Entering from flat — enter best only if it has positive absolute return
+                current = best if row[best] > 0 else None
+            elif best == current:
+                # Still the top performer; exit only if 12-month went negative
+                if row[current] <= 0:
+                    current = None
+            else:
+                # Rotation candidate: only switch if challenger leads by buffer_pct AND is positive
+                if row[best] > 0 and row[best] - row[current] > self.buffer_pct:
+                    current = best
+                elif row[current] <= 0:
+                    # Current's 12-month went negative; no valid replacement clears buffer → flat
+                    current = None
+                # else: keep current (buffer prevents flip-flopping)
+
+            if current is not None:
+                sig.loc[dt, current] = 1
+
+        return sig
 
 
 @register_model("long_term_etf", "above_200ma")

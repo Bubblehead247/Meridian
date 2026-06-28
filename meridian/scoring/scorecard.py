@@ -211,3 +211,76 @@ def scorecard_from_backtest(
         periods_per_year=periods_per_year,
         slippage_bps=slippage_bps,
     )
+
+
+def _avg_holding_period_cs(weights: pd.DataFrame) -> float:
+    """Mean bars held per rotation position (non-cash runs) in a cross-sectional model."""
+    if weights is None or weights.empty:
+        return float("nan")
+    held = weights.idxmax(axis=1).where(weights.max(axis=1) > 1e-10)
+    held_str = held.fillna("__cash__")
+    transitions = held_str.ne(held_str.shift()).fillna(True)
+    run_id = transitions.cumsum()
+    periods = []
+    for rid in run_id.unique():
+        grp = held[run_id == rid]
+        if len(grp) and not pd.isna(grp.iloc[0]):
+            periods.append(len(grp))
+    return float(np.mean(periods)) if periods else float("nan")
+
+
+def scorecard_from_portfolio(
+    result,
+    *,
+    index=None,
+    regime_frame: pd.DataFrame | None = None,
+    sleeve_returns: dict[str, pd.Series] | None = None,
+    periods_per_year: int = PERIODS_PER_YEAR,
+    slippage_bps: tuple[int, ...] = DEFAULT_SLIPPAGE_BPS,
+) -> dict:
+    """Score a ``PortfolioResult``; restrict to ``index`` for walk-forward / OOS windows.
+
+    Derives turnover, n_trades, avg_holding_period from the portfolio's weight frame and
+    pre-computed ``turnover_series`` — metrics that ``scorecard_from_backtest`` cannot
+    compute for cross-sectional models.
+    """
+    if index is not None:
+        returns = result.returns.reindex(index).fillna(0.0)
+        turn = result.turnover_series.reindex(index).fillna(0.0)
+        weights = (
+            result.weights.reindex(index)
+            if isinstance(result.weights, pd.DataFrame)
+            else None
+        )
+    else:
+        returns = result.returns
+        turn = result.turnover_series
+        weights = result.weights if isinstance(result.weights, pd.DataFrame) else None
+
+    card = performance_metrics(returns, periods_per_year=periods_per_year)
+    n = len(returns)
+    years = n / periods_per_year if n else float("nan")
+
+    ann_turn = float(turn.sum() / years) if years and years > 0 else float("nan")
+    n_trades_val = int((turn > 0).sum()) if len(turn) else 0
+    card["n_trades"] = n_trades_val
+
+    slip: dict[int, float] = {}
+    if len(turn) and len(returns):
+        for bps in slippage_bps:
+            adj = returns - turn * (bps / 1e4)
+            slip[int(bps)] = sharpe(adj, periods_per_year)
+
+    card.update(
+        {
+            "ulcer_index": _ulcer_index(returns),
+            "turnover": ann_turn,
+            "avg_holding_period": _avg_holding_period_cs(weights),
+            "slippage_sensitivity": slip,
+            "regime_conditional": _regime_conditional(
+                returns, regime_frame, periods_per_year=periods_per_year
+            ),
+            "sleeve_correlation": _sleeve_correlation(returns, sleeve_returns),
+        }
+    )
+    return card

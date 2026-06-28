@@ -15,7 +15,7 @@ from meridian.pipeline.graduation import (
     passes_metric_bar,
 )
 from meridian.pipeline.oos import compare_oos_to_is, run_oos_stage
-from meridian.pipeline.orchestrator import run_pipeline
+from meridian.pipeline.orchestrator import run_cross_sectional_pipeline, run_pipeline
 from meridian.pipeline.research import (
     Hypothesis,
     ResearchLog,
@@ -81,6 +81,7 @@ __all__ = [
     "run_stage",
     "STAGE_RUNNERS",
     "run_pipeline",
+    "run_cross_sectional_pipeline",
     "run_universe_backtest_stage",
     "run_universe_walk_forward_stage",
     "run_universe_oos_stage",
