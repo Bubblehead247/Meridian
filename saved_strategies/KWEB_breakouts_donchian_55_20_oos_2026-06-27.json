@@ -2,7 +2,7 @@
   "family": "breakouts",
   "model": "donchian_55_20",
   "symbol": "KWEB",
-  "stage_passed": "oos",
+  "stage_passed": "retired",
   "saved_at": "2026-06-27",
   "scorecard": {
     "n_periods": 756,

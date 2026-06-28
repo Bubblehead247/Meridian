@@ -1,0 +1,18 @@
+{
+  "family": "volatility",
+  "model": "vix_band",
+  "symbol": "SVXY_^VIX",
+  "stage_passed": "paper",
+  "as_of": "2026-06-28",
+  "scorecard": {
+    "sharpe": 0.707,
+    "max_dd": -0.3789,
+    "calmar": 0.4389,
+    "return_10yr": 2.7817,
+    "return_5yr": 1.3823,
+    "return_3yr": 0.395,
+    "return_1yr": 0.2862,
+    "return_6mo": 0.1284,
+    "n_bars": 3640
+  }
+}

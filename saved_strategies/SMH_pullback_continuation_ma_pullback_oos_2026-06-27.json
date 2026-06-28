@@ -2,7 +2,7 @@
   "family": "pullback_continuation",
   "model": "ma_pullback",
   "symbol": "SMH",
-  "stage_passed": "oos",
+  "stage_passed": "paper",
   "saved_at": "2026-06-27",
   "scorecard": {
     "n_periods": 756,

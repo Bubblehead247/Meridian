@@ -361,6 +361,19 @@ def _cmd_run_paper(args) -> int:
     return 0
 
 
+def _cmd_chart(args) -> int:
+    """Render per-family equity charts then the combined fund curve."""
+    from meridian.visualization.fund_chart import build_fund_returns, show_all_family_charts
+
+    print("Building fund charts — running backtests for live picks...")
+    data = build_fund_returns(price_start=args.start or "2010-01-01")
+    if not data:
+        print("No data available.", file=sys.stderr)
+        return 1
+    show_all_family_charts(data, equity=args.equity)
+    return 0
+
+
 def _cmd_menu(args) -> int:
     from meridian.interactive import run_menu
 
@@ -461,6 +474,15 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--live", action="store_true",
                     help="Use the live Alpaca endpoint instead of paper (default: paper)")
     rp.set_defaults(func=_cmd_run_paper)
+
+    cp = sub.add_parser(
+        "chart", help="Render the fund equity curve for the live picks in the terminal"
+    )
+    cp.add_argument("--equity", type=float, default=10_000.0,
+                    help="Starting account equity for the y-axis scale (default: 10000)")
+    cp.add_argument("--start", default=None,
+                    help="Earliest date to fetch price history (default: 2010-01-01)")
+    cp.set_defaults(func=_cmd_chart)
 
     mp = sub.add_parser("menu", help="Launch the interactive menu (same as no command)")
     mp.set_defaults(func=_cmd_menu)

@@ -1,0 +1,34 @@
+{
+  "breakouts": {
+    "model": "turtle_ma_exit",
+    "symbol": "TRGP"
+  },
+  "long_term_etf": {
+    "model": "ma_bond_rotation_cs_b126",
+    "symbol": "QQQ_IEF_KMLM"
+  },
+  "mean_reversion": {
+    "model": "rsi_exhaustion",
+    "symbol": "SNOW"
+  },
+  "momentum": {
+    "model": "dual_momentum_long_only",
+    "symbol": "AAPL_MSFT_AMZN_NVDA_GOOGL_META_JPM_XOM_LLY_UNH_AVGO_MA_V_HD_PG"
+  },
+  "pullback_continuation": {
+    "model": "rsi_pullback",
+    "symbol": "WFRD"
+  },
+  "sector_rotation": {
+    "model": "relative_strength_b05",
+    "symbol": "SECTORS"
+  },
+  "trend_following": {
+    "model": "ma_trend_long_only",
+    "symbol": "XLK"
+  },
+  "volatility": {
+    "model": "vix_band",
+    "symbol": "SVXY_^VIX"
+  }
+}

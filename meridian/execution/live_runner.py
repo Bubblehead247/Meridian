@@ -23,9 +23,14 @@ from meridian.families import create_model
 from meridian.pipeline.records import load_records
 from meridian.portfolio.allocation import FAMILY_TO_SLEEVE, SLEEVE_ALLOCATIONS
 
-# Symbols we cannot trade as equities through Alpaca (handled separately later)
-_PLACEHOLDER_SYMBOLS = {"SECTORS"}
+# Crypto suffixes that Alpaca routes through its crypto endpoint (not equity)
 _CRYPTO_SUFFIXES = ("_USDT", "_USD")
+
+# The 11 SPDR sector ETFs — what "SECTORS" expands to at execution time
+_SECTOR_UNIVERSE = [
+    "XLC", "XLY", "XLP", "XLE", "XLF",
+    "XLV", "XLI", "XLB", "XLRE", "XLK", "XLU",
+]
 
 
 @dataclass
@@ -44,14 +49,19 @@ class StrategyDecision:
 
 
 def _is_tradeable(symbol_str: str) -> bool:
-    """False for placeholder labels and crypto symbols."""
-    if symbol_str in _PLACEHOLDER_SYMBOLS:
-        return False
+    """False for crypto symbols (routed separately). SECTORS and composite tickers are equity-tradeable."""
     return not any(symbol_str.endswith(s) for s in _CRYPTO_SUFFIXES)
 
 
-def _parse_symbols(symbol_str: str) -> list[str]:
-    """Split a composite symbol string (e.g. 'SPY_TLT_IEF') into individual tickers."""
+def _expand_symbol(symbol_str: str) -> list[str]:
+    """Resolve a symbol string to a list of individual tickers.
+
+    'SECTORS' expands to the full 11-ETF sector universe.
+    Composite strings like 'SPY_TLT_IEF' split on '_'.
+    Single tickers are returned as a one-element list.
+    """
+    if symbol_str == "SECTORS":
+        return list(_SECTOR_UNIVERSE)
     return symbol_str.split("_")
 
 
@@ -111,7 +121,8 @@ def run_paper_session(
         return FAMILY_TO_SLEEVE.get(family, family)
 
     family_counts: Counter[str] = Counter(
-        _sleeve(r.family) for r in paper_records if _is_tradeable(r.symbol)
+        _sleeve(r.family) for r in paper_records
+        if _is_tradeable(r.symbol)
     )
 
     today = date.today()
@@ -127,7 +138,7 @@ def run_paper_session(
             ))
             continue
 
-        symbols = _parse_symbols(rec.symbol)
+        symbols = _expand_symbol(rec.symbol)
 
         # --- load prices ---
         prices = _fetch_prices(symbols, start=price_start)

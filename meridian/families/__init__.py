@@ -36,6 +36,7 @@ from meridian.families.registry import (
 )
 from meridian.families.sector_rotation import models as _sector_rotation_models  # noqa: F401
 from meridian.families.trend_following import models as _trend_following_models  # noqa: F401
+from meridian.families.volatility import models as _volatility_models  # noqa: F401
 
 __all__ = [
     "PERMISSIONS",

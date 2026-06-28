@@ -3,7 +3,7 @@
   "model": "rsi_pullback_50_200",
   "symbol": "ATOM_USDT",
   "stage_passed": "retired",
-  "saved_at": "2026-06-27",
+  "saved_at": "2026-06-28",
   "scorecard": {
     "n_periods": 828,
     "total_return": 3.0838999538859246,

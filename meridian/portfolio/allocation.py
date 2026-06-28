@@ -17,7 +17,8 @@ from meridian.portfolio.ledger import LedgerStore, StrategyLedger
 #: map to themselves (family == sleeve). Use this when a family shares a sleeve
 #: with another (e.g. breakouts is part of the "trend-following breakout" 15% sleeve).
 FAMILY_TO_SLEEVE: dict[str, str] = {
-    "breakouts": "trend_following",
+    "breakouts":  "trend_following",
+    "volatility": "experimental_research",
 }
 
 #: Fixed starting allocation by sleeve (sums to 1.0). Keys double as ledger/family names.

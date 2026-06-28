@@ -2,7 +2,7 @@
   "family": "mean_reversion",
   "model": "gap_fill",
   "symbol": "FXI",
-  "stage_passed": "paper",
+  "stage_passed": "retired",
   "saved_at": "2026-06-27",
   "scorecard": {
     "n_periods": 756,
