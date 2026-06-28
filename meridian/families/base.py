@@ -187,12 +187,24 @@ class CrossSectionalModel:
     quantile: float = 0.3
     long_only: bool = False
     sizing: str = "equal_weight"
+    buffer_pct: float = 0.0   # hysteresis buffer; 0 = no buffer (original behaviour)
 
     def signals(self, prices_by_symbol: dict[str, pd.Series]) -> pd.DataFrame:
         """Cross-sectional {-1,0,+1} signal frame (date × symbol)."""
-        from meridian.features.cross_sectional import momentum_scores, rank_signals
+        from meridian.features.cross_sectional import (
+            momentum_scores,
+            rank_signals,
+            rank_signals_buffered,
+        )
 
         scores = momentum_scores(prices_by_symbol, self.lookback)
+        if self.buffer_pct > 0.0:
+            return rank_signals_buffered(
+                scores,
+                quantile=self.quantile,
+                long_only=self.long_only,
+                buffer_pct=self.buffer_pct,
+            )
         return rank_signals(scores, quantile=self.quantile, long_only=self.long_only)
 
     def backtest(self, prices_by_symbol: dict[str, pd.Series], *, cost_bps: float = 1.0):

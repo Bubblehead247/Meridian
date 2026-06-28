@@ -135,3 +135,112 @@ Each Claude Code session must:
 2. Load the most recent `phase_N_summary.md`
 3. Work only within the current phase scope
 4. End by writing or updating `phase_N_summary.md`
+
+---
+
+## Expanded Mandate
+
+Meridian is the research-and-development platform for a diversified rules-based retail quant fund, operating as part of the **Fable 5 trading system**. The original mean-reversion estimator research remains the foundation. On top of it, Meridian now hosts nine strategy families, a graduation pipeline, a virtual ledger, a risk budget engine, and a monthly review process — everything needed to run a systematic multi-strategy fund from idea to live capital.
+
+---
+
+## Modules
+
+| Module | Responsibility |
+|---|---|
+| `data/` | OHLCV ingestion, caching, universe management |
+| `estimators/` | 38 fair-value estimators + registry |
+| `deviations/` | Deviation metrics (z-score, ATR-norm, etc.) |
+| `signals/` | Entry/exit signal logic and backtester |
+| `regimes/` | Market regime classifiers; `labeler.py` owns daily 3-dim index-level labels |
+| `validation/` | Walk-forward, OOS splits, bootstrap, Monte Carlo, statistical corrections |
+| `analytics/` | Performance metrics (CAGR, Sharpe, Sortino, Calmar, drawdown, profit factor) |
+| `portfolio/` | Position sizing, construction, ledger, allocation, correlation, risk budget, monthly review |
+| `execution/` | Order execution and paper trading via alpaca-py |
+| `visualization/` | Charts, heatmaps, dashboards |
+| `families/` | Multi-model layer: wraps existing est+dev+signal into named strategy models per family |
+| `pipeline/` | Stage-runners (backtest, walk-forward, OOS) + graduation state machine + research records |
+| `scoring/` | Per-strategy scorecard: wraps analytics/metrics and adds regime splits, sleeve correlation |
+| `reporting/` | Renders monthly review output to markdown under `reports/` |
+
+---
+
+## Strategy Families
+
+| Family | Status | Holding Period |
+|---|---|---|
+| Mean reversion | Active | 2–5 days |
+| Trend following | Active — scaffold | 1–3 months |
+| Momentum | Active — scaffold | 1–3 weeks |
+| Breakouts | Active — scaffold | 1–3 weeks |
+| Pullback continuation | Active — scaffold | 1–3 weeks |
+| Sector rotation | Active — scaffold | 1–3 months |
+| Long-term ETF | Active — scaffold | 6–12+ months |
+| Event-driven | Deferred — stub only | TBD |
+| Volatility | Deferred — stub only | TBD |
+
+---
+
+## Regime Labeling
+
+Three dimensions computed daily, stored as a DataFrame indexed by date.
+
+- **Trend** (SPY/IWM): `Bull` = close > 200-day MA AND ADX > 25; `Neutral` = close near 200MA AND ADX 15–25; `Bear` = close < 200MA.
+- **Volatility** (^VIX close): `Low` < 15; `Normal` 15–20; `Elevated` 20–30; `Extreme` > 30.
+- **Breadth** (% of S&P 500 constituents above their 200-day MA): `Expansion` > 60%; `Neutral` 40–60%; `Contraction` < 40%.
+
+Every backtest bar, walk-forward window, and live signal is left-joined to the regime frame on date.
+
+---
+
+## Graduation Pipeline
+
+| Stage | Live Capital |
+|---|---|
+| Research | 0% |
+| Backtest | 0% |
+| Walk-forward | 0% |
+| OOS holdout | 0% |
+| Paper | 0% |
+| Pilot | 1–3% |
+| Proven | 5–10% |
+| Core | 10–20% |
+| Elite | 20%+ |
+| Retired | 0% |
+
+Promotion requires days-in-stage threshold AND metrics within target band AND live profile matches backtest. Retirement triggers when expectancy degrades or drawdown exceeds limit.
+
+---
+
+## Starting Portfolio Allocation
+
+| Sleeve | Allocation |
+|---|---|
+| Long-term diversified ETF | 25% |
+| Momentum swing | 15% |
+| Trend-following breakout | 15% |
+| Mean reversion | 15% |
+| Pullback continuation | 10% |
+| Sector rotation | 10% |
+| Cash reserve | 5% |
+| Experimental research | 5% |
+
+Total: 100%.
+
+---
+
+## Scorecard Fields
+
+Required metrics per strategy: CAGR, Sharpe, Sortino, Calmar, profit factor, win rate, avg winner, avg loser, max drawdown, Ulcer Index, trade count, turnover, avg holding period, slippage sensitivity (dict: bps → Sharpe), regime-conditional performance (metrics split by each of the 3 regime dimensions), correlation to each active sleeve.
+
+---
+
+## Monthly Review Checklist
+
+- P&L vs benchmark
+- Drawdown per sleeve
+- Correlation changes since last review
+- Position-sizing adherence
+- Execution quality
+- Regime/permission compliance
+- Capital allocation adjustments

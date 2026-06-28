@@ -1,6 +1,11 @@
 """Data ingestion, caching, and universe management."""
 
 from meridian.data.cache import OHLCVCache, UniverseCache
+from meridian.data.crypto import (
+    crypto_bars_per_year,
+    load_crypto,
+    load_crypto_universe,
+)
 from meridian.data.intraday import (
     AlpacaDataLoader,
     bars_per_year,
@@ -22,6 +27,9 @@ __all__ = [
     "load_intraday",
     "load_intraday_universe",
     "bars_per_year",
+    "load_crypto",
+    "load_crypto_universe",
+    "crypto_bars_per_year",
     "AlpacaDataLoader",
     "OHLCV_COLUMNS",
     "normalize_ohlcv",

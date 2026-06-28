@@ -22,15 +22,27 @@ ruff check meridian tests         # lint
 
 ## Running (CLI)
 
-Everything is driven from a YAML config — a run is reproducible from the config
-alone. Installing the package adds a `meridian` command:
+Installing the package adds a `meridian` command (or use `python -m meridian`).
+**Run it with no arguments for a guided interactive menu** — the low-typing way to
+throw symbols/baskets at strategies:
 
 ```bash
-meridian list estimators                        # 42 estimators (incl. ensembles)
+meridian                                         # interactive menu (pick symbol + strategy, loops)
+meridian gauntlet --symbol SPY                   # rank EVERY strategy on a symbol (scoreboard)
+meridian gauntlet --symbols XLK XLF XLE          # rank cross-sectional models on a basket
+meridian pipeline mean_reversion/zscore_reversion --symbols SPY QQQ   # one strategy, many symbols
+meridian fund --universe QQQ --equity 100000     # whole fund lifecycle -> month-end report
+meridian list models                             # the 19 family/model names
+```
+
+The config-driven research commands are also there (reproducible from the YAML alone):
+
+```bash
 meridian validate configs/validation_spy.yaml   # walk-forward + significance -> report
 meridian backtest configs/validation_spy.yaml   # ranked table, no report file
 meridian universe configs/universe_largecap.yaml # cross-sectional, many symbols -> report
 meridian paper    configs/paper_spy.yaml         # paper-trading dry-run
+meridian list estimators                         # 42 estimators (incl. ensembles)
 ```
 
 - **validate** runs anchored walk-forward over the config's estimators, applies

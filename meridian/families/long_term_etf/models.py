@@ -122,3 +122,46 @@ class MABondRotationModel(Model):
         # When equity signal is off, we're in bonds — mark as flat for single-series
         # backtester; the portfolio layer handles the TLT allocation.
         return equity.fillna(0).astype(int)
+
+
+@register_model("long_term_etf", "ma_bond_rotation_cs")
+class MABondRotationCSModel(CrossSectionalModel):
+    """MA-based risk-on/off rotation: hold equity while above its long MA, else hold bonds.
+
+    The first symbol in the basket is the equity (the 200-day MA is applied to it).
+    Remaining symbols are bond alternatives — held when equity is below its MA.
+    When multiple bond alternatives are present, the one with the best trailing
+    ``bond_lookback``-bar return is selected each bar.  One asset held at a time.
+
+    Convention: pass symbols as equity-first, e.g. --symbols SPY IEF TLT.
+    """
+
+    window: int = 200
+    bond_lookback: int = 63  # trailing window for ranking bond alternatives
+    long_only: bool = True
+
+    def signals(self, prices_by_symbol: dict[str, pd.Series]) -> pd.DataFrame:
+        symbols = list(prices_by_symbol.keys())
+        equity = symbols[0]
+        bonds  = symbols[1:]
+
+        prices = pd.DataFrame(prices_by_symbol).ffill().bfill()
+        ma      = prices[equity].rolling(self.window).mean()
+        risk_on = (prices[equity] >= ma) & ma.notna()
+
+        sig = pd.DataFrame(0, index=prices.index, columns=symbols, dtype=int)
+        sig.loc[risk_on, equity] = 1
+
+        risk_off = (~risk_on) & ma.notna()
+        if not bonds:
+            pass  # no bond leg — cash when risk-off
+        elif len(bonds) == 1:
+            sig.loc[risk_off, bonds[0]] = 1
+        else:
+            bond_rets = prices[bonds].pct_change(self.bond_lookback, fill_method=None)
+            for dt in prices.index[risk_off]:
+                row = bond_rets.loc[dt].dropna()
+                if not row.empty:
+                    sig.loc[dt, row.idxmax()] = 1
+
+        return sig

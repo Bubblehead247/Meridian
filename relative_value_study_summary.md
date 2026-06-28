@@ -100,9 +100,12 @@ no robust, cost-aware, out-of-sample mean-reversion edge on US equities, absolut
 
 ---
 
-## Next passes (planned)
-- **Intraday-frequency MR** — reversal is strongest intraday; needs intraday data.
-- **Other asset classes** — spreads, ETF pairs, crypto (lower-cost, more
-  reversion-prone instruments may change the cost verdict).
-- **Deferred transforms** — market-residual (beta-neutral) and sector-relative,
-  plus `relative:` config/CLI wiring.
+## Next passes
+- **Intraday-frequency MR** — DONE (`intraday_study_summary.md`): no edge at any
+  horizon 1m–1h, loses even gross (bid-ask-bounce artifact).
+- **Other asset classes** — DONE (`other_asset_classes_study_summary.md`): crypto
+  cost is higher not lower; ETF twins too tight; **sector/calendar spreads** gave
+  the project's first cost-surviving BH-significant signal (candidate for
+  confirmation, not an established edge).
+- **Deferred transforms** (still open) — market-residual (beta-neutral) and
+  sector-relative, plus `relative:` config/CLI wiring.

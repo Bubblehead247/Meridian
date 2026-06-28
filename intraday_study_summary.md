@@ -132,6 +132,10 @@ bid-ask-bounce artifact that realistic one-bar-lagged execution cannot capture.
 The project's headline stands and is now established across frequencies: no
 robust, cost-aware mean-reversion edge — daily, cross-sectional, or intraday.
 
-## Next pass (planned)
-- Other asset classes (spreads, ETF pairs, crypto — lower-cost / more
-  reversion-prone instruments may change the verdict).
+## Next pass — DONE (see `other_asset_classes_study_summary.md`)
+- Other asset classes (spreads, ETF pairs, crypto). Verdict: crypto's cost is
+  *higher* not lower (gross signal dies); ETF twins are too tight to trade; but
+  **sector/calendar spreads** produced the project's first BH-significant signal
+  that **survives realistic ETF costs** (lsma w20, gross 0.73, ~0.43–0.58 at
+  1–2 bps/leg, low turnover) — flagged as a candidate for dedicated confirmation,
+  not an established edge.

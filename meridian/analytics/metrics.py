@@ -129,6 +129,7 @@ def performance_metrics(
         out.update(
             {
                 "n_trades": int(len(tr)),
+                "trades_per_year": float(len(tr) / years) if years > 0 else float("nan"),
                 "trade_win_rate": float((tr > 0).mean()),
                 "trade_avg_win": float(twin.mean()) if twin.size else 0.0,
                 "trade_avg_loss": float(tloss.mean()) if tloss.size else 0.0,

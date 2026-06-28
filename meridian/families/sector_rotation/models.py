@@ -29,3 +29,43 @@ class RelativeSectorStrengthModel(CrossSectionalModel):
     lookback = 120
     quantile = 0.34       # roughly the top third of sectors
     long_only = True
+
+
+@register_model("sector_rotation", "relative_strength_b05")
+class RelativeSectorStrengthB05Model(CrossSectionalModel):
+    """0.5% momentum buffer — light brake on daily rank churn."""
+
+    lookback = 120
+    quantile = 0.34
+    long_only = True
+    buffer_pct = 0.005
+
+
+@register_model("sector_rotation", "relative_strength_b1")
+class RelativeSectorStrengthB1Model(CrossSectionalModel):
+    """1% momentum buffer — a challenger must beat a held sector by >1% trailing return."""
+
+    lookback = 120
+    quantile = 0.34
+    long_only = True
+    buffer_pct = 0.01
+
+
+@register_model("sector_rotation", "relative_strength_b2")
+class RelativeSectorStrengthB2Model(CrossSectionalModel):
+    """2% momentum buffer — moderate friction, roughly monthly rebalance cadence."""
+
+    lookback = 120
+    quantile = 0.34
+    long_only = True
+    buffer_pct = 0.02
+
+
+@register_model("sector_rotation", "relative_strength_b3")
+class RelativeSectorStrengthB3Model(CrossSectionalModel):
+    """3% momentum buffer — strong friction, near-quarterly rebalance cadence."""
+
+    lookback = 120
+    quantile = 0.34
+    long_only = True
+    buffer_pct = 0.03
