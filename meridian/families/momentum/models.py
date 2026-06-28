@@ -119,6 +119,21 @@ class DualMomentumModel(CrossSectionalModel):
         return sig.astype(int)
 
 
+@register_model("momentum", "relative_strength_trend_filtered")
+class RelativeStrengthTrendFilteredModel(CrossSectionalModel):
+    """Cross-sectional relative strength, long-only, with SPY 200-day MA market filter.
+
+    Goes to cash (all signals = 0) when SPY is below its 200-day MA.  SPY must be
+    passed as the first symbol so the base ``backtest`` can strip it from the
+    tradeable universe while using it to gate signals.
+    """
+
+    lookback = 60
+    quantile = 0.3
+    long_only = True
+    trend_filter = True
+
+
 @register_model("momentum", "dual_momentum_long_only")
 class DualMomentumLongOnlyModel(CrossSectionalModel):
     """Dual momentum, long-only: long top-ranked names with positive absolute momentum only.
@@ -139,3 +154,16 @@ class DualMomentumLongOnlyModel(CrossSectionalModel):
         # Drop longs where absolute momentum is non-positive (cash those positions)
         sig = rel.where(~((rel > 0) & (absmom <= 0)), 0)
         return sig.astype(int)
+
+
+@register_model("momentum", "dual_momentum_trend_filtered")
+class DualMomentumTrendFilteredModel(DualMomentumLongOnlyModel):
+    """Dual momentum long-only with SPY 200-day MA market-timing overlay.
+
+    Combines two bear-market defenses: the absolute momentum gate (go flat when a
+    stock's own 120-day return turns negative) AND the SPY MA gate (go to cash when
+    the broad market is in a downtrend).  SPY must be included in --symbols so the
+    base backtest can use it as the filter; it is not traded.
+    """
+
+    trend_filter = True

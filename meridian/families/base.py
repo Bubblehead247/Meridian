@@ -189,6 +189,13 @@ class CrossSectionalModel:
     sizing: str = "equal_weight"
     buffer_pct: float = 0.0   # hysteresis buffer; 0 = no buffer (original behaviour)
 
+    # Market-regime overlay: when trend_filter=True the filter symbol is stripped
+    # from the tradeable universe and used only to gate signals (go to cash when
+    # filter symbol is below its moving average).
+    trend_filter: bool = False
+    trend_filter_symbol: str = "SPY"
+    trend_filter_window: int = 200
+
     def signals(self, prices_by_symbol: dict[str, pd.Series]) -> pd.DataFrame:
         """Cross-sectional {-1,0,+1} signal frame (date × symbol)."""
         from meridian.features.cross_sectional import (
@@ -211,9 +218,24 @@ class CrossSectionalModel:
         """Backtest the ranked portfolio via the shared cross-sectional engine."""
         from meridian.portfolio import backtest_portfolio
 
-        signals = self.signals(prices_by_symbol)
+        # Separate filter symbol from the tradeable universe
+        tradeable = prices_by_symbol
+        filter_prices = None
+        if self.trend_filter and self.trend_filter_symbol in prices_by_symbol:
+            filter_prices = prices_by_symbol[self.trend_filter_symbol]
+            tradeable = {k: v for k, v in prices_by_symbol.items()
+                         if k != self.trend_filter_symbol}
+
+        signals = self.signals(tradeable)
+
+        # Apply trend filter: zero all signals when filter symbol is below its MA
+        if filter_prices is not None:
+            fp = pd.Series(filter_prices).reindex(signals.index).ffill()
+            ma = fp.rolling(self.trend_filter_window).mean()
+            signals.loc[(fp < ma) | ma.isna()] = 0
+
         prices = pd.DataFrame(
-            {s: pd.Series(p) for s, p in prices_by_symbol.items()}
+            {s: pd.Series(p) for s, p in tradeable.items()}
         ).reindex(signals.index)
         result = backtest_portfolio(
             signals, prices, sizing=self.sizing, cost_bps=cost_bps, lookback=self.lookback
