@@ -1,6 +1,6 @@
 {
   "family": "long_term_etf",
-  "model": "above_200ma",
+  "model": "ma_bond_rotation",
   "symbol": "SPY",
   "stage_passed": "oos",
   "saved_at": "2026-06-27",
