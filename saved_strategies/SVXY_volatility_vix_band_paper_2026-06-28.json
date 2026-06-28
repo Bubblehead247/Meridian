@@ -3,7 +3,6 @@
   "model": "vix_band",
   "symbol": "SVXY_^VIX",
   "stage_passed": "paper",
-  "as_of": "2026-06-28",
   "scorecard": {
     "sharpe": 0.707,
     "max_dd": -0.3789,
@@ -14,5 +13,7 @@
     "return_1yr": 0.2862,
     "return_6mo": 0.1284,
     "n_bars": 3640
-  }
+  },
+  "saved_at": "2026-06-28",
+  "ledger": {}
 }
