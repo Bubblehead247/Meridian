@@ -13,6 +13,13 @@ from __future__ import annotations
 
 from meridian.portfolio.ledger import LedgerStore, StrategyLedger
 
+#: Maps a strategy family to the sleeve that funds it. Families not listed here
+#: map to themselves (family == sleeve). Use this when a family shares a sleeve
+#: with another (e.g. breakouts is part of the "trend-following breakout" 15% sleeve).
+FAMILY_TO_SLEEVE: dict[str, str] = {
+    "breakouts": "trend_following",
+}
+
 #: Fixed starting allocation by sleeve (sums to 1.0). Keys double as ledger/family names.
 SLEEVE_ALLOCATIONS: dict[str, float] = {
     "long_term_etf": 0.25,

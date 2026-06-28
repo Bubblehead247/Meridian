@@ -21,7 +21,7 @@ from meridian.data import load_ohlcv
 from meridian.execution.broker import BaseBroker, Fill
 from meridian.families import create_model
 from meridian.pipeline.records import load_records
-from meridian.portfolio.allocation import SLEEVE_ALLOCATIONS
+from meridian.portfolio.allocation import FAMILY_TO_SLEEVE, SLEEVE_ALLOCATIONS
 
 # Symbols we cannot trade as equities through Alpaca (handled separately later)
 _PLACEHOLDER_SYMBOLS = {"SECTORS"}
@@ -105,10 +105,14 @@ def run_paper_session(
     """
     paper_records = [r for r in load_records() if r.stage_passed == "paper"]
 
-    # Count strategies per family for equal intra-sleeve allocation
+    # Count strategies per sleeve (breakouts shares the trend_following sleeve)
     from collections import Counter
-    family_counts: Counter[str] = Counter(r.family for r in paper_records
-                                          if _is_tradeable(r.symbol))
+    def _sleeve(family: str) -> str:
+        return FAMILY_TO_SLEEVE.get(family, family)
+
+    family_counts: Counter[str] = Counter(
+        _sleeve(r.family) for r in paper_records if _is_tradeable(r.symbol)
+    )
 
     today = date.today()
     decisions: list[StrategyDecision] = []
@@ -158,8 +162,9 @@ def run_paper_session(
             continue
 
         # --- position sizing ---
-        sleeve_weight = SLEEVE_ALLOCATIONS.get(rec.family, 0.0)
-        n_strategies = max(family_counts[rec.family], 1)
+        sleeve = _sleeve(rec.family)
+        sleeve_weight = SLEEVE_ALLOCATIONS.get(sleeve, 0.0)
+        n_strategies = max(family_counts[sleeve], 1)
         per_strategy_equity = account_equity * sleeve_weight / n_strategies
 
         n_long = sum(1 for v in sigs.values() if v > 0)
@@ -204,7 +209,7 @@ def run_paper_session(
 
 def print_session_report(decisions: list[StrategyDecision]) -> None:
     """Print a human-readable summary of a paper session to stdout."""
-    from meridian.portfolio.allocation import SLEEVE_ALLOCATIONS
+    from meridian.portfolio.allocation import FAMILY_TO_SLEEVE, SLEEVE_ALLOCATIONS
 
     active = [d for d in decisions if not d.skipped]
     skipped = [d for d in decisions if d.skipped]
@@ -214,10 +219,11 @@ def print_session_report(decisions: list[StrategyDecision]) -> None:
     print(f"{'='*60}")
     print(f"  Strategies:  {len(active)} active  |  {len(skipped)} skipped")
 
-    # Group active by family
+    # Group active by sleeve (breakouts shares trend_following)
     by_family: dict[str, list[StrategyDecision]] = {}
     for d in active:
-        by_family.setdefault(d.family, []).append(d)
+        sleeve = FAMILY_TO_SLEEVE.get(d.family, d.family)
+        by_family.setdefault(sleeve, []).append(d)
 
     for family in sorted(by_family):
         pct = SLEEVE_ALLOCATIONS.get(family, 0.0)
