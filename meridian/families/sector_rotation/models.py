@@ -69,3 +69,24 @@ class RelativeSectorStrengthB3Model(CrossSectionalModel):
     quantile = 0.34
     long_only = True
     buffer_pct = 0.03
+
+
+@register_model("sector_rotation", "relative_strength_trend_filtered")
+class RelativeSectorStrengthTrendFilteredModel(CrossSectionalModel):
+    """Relative strength with SPY 200-day MA market gate; goes to cash in downtrends."""
+
+    lookback = 120
+    quantile = 0.34
+    long_only = True
+    trend_filter = True
+
+
+@register_model("sector_rotation", "relative_strength_b1_trend_filtered")
+class RelativeSectorStrengthB1TrendFilteredModel(CrossSectionalModel):
+    """1% buffer + SPY 200-day MA gate: friction on rotation AND bear-market exit."""
+
+    lookback = 120
+    quantile = 0.34
+    long_only = True
+    buffer_pct = 0.01
+    trend_filter = True
