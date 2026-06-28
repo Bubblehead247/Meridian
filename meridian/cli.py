@@ -294,6 +294,44 @@ def _cmd_sweep(args) -> int:
     return 0
 
 
+def _cmd_review(args) -> int:
+    """Build and write the monthly review from all paper-stage strategies."""
+    from pathlib import Path
+
+    from meridian.reporting.review_runner import build_paper_review, render_full_review
+    from meridian.reporting.monthly_report import write_monthly_report
+
+    print("Building monthly review…")
+    review, inventory_md = build_paper_review(
+        equity=args.equity,
+        price_start=args.start or "2023-01-01",
+        lookback_days=args.lookback,
+    )
+
+    full_md = render_full_review(review, inventory_md)
+
+    out_dir = Path(args.report_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"monthly_review_{review.as_of}.md"
+    path.write_text(full_md, encoding="utf-8")
+
+    print(f"Report: {path}")
+    print(f"Benchmark (SPY {args.lookback}d): {review.benchmark_return:+.2%}")
+    if review.regime:
+        print(f"Regime: trend={review.regime[0]}  vol={review.regime[1]}  breadth={review.regime[2]}")
+    print(f"Portfolio heat: {review.portfolio_heat:.2%}"
+          + (" ⚠ breached" if review.heat_breached else ""))
+    print()
+    print(f"{'Sleeve':<25} {'Action':<10} {'Return':>8} {'vs SPY':>8} {'DD':>7} {'OK':>4}")
+    print("-" * 68)
+    for s in review.sleeves:
+        ok = "✓" if s.permitted else "✗"
+        print(f"  {s.sleeve:<23} {s.action:<10} "
+              f"{s.return_pct:>7.1%} {s.excess_vs_benchmark:>+8.1%} "
+              f"{s.drawdown_cur:>6.1%} {ok:>4}")
+    return 0
+
+
 def _cmd_run_paper(args) -> int:
     """Compute today's signals for every paper-stage strategy and (optionally) send orders."""
     from meridian.execution.broker import AlpacaBroker, SimulatedBroker
@@ -397,6 +435,19 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--confirm", action="store_true",
                     help="Auto-confirm the winning setting through the full fixed-OOS holdout")
     sp.set_defaults(func=_cmd_sweep)
+
+    rvp = sub.add_parser(
+        "review", help="Build and write the monthly review report for all paper-stage strategies"
+    )
+    rvp.add_argument("--equity", type=float, default=10_000.0,
+                     help="Total account equity (default: 10000)")
+    rvp.add_argument("--start", default=None,
+                     help="Earliest date to fetch for indicator warmup (default: 2023-01-01)")
+    rvp.add_argument("--lookback", type=int, default=30,
+                     help="Benchmark return lookback in calendar days (default: 30)")
+    rvp.add_argument("--report-dir", default="reports", dest="report_dir",
+                     help="Output directory for the markdown report (default: reports/)")
+    rvp.set_defaults(func=_cmd_review)
 
     rp = sub.add_parser(
         "run-paper", help="Compute today's signals for all paper-stage strategies and send orders"
