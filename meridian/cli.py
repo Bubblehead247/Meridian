@@ -420,6 +420,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     from urllib.error import URLError
 
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass  # python-dotenv optional; env vars can still be set manually
+
     parser = build_parser()
     args = parser.parse_args(argv)
     func = getattr(args, "func", None)

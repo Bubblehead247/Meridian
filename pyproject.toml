@@ -29,6 +29,7 @@ dependencies = [
     "matplotlib>=3.9",
     # Config
     "pyyaml>=6.0",
+    "python-dotenv>=1.0",
     # Experiment tracking
     "mlflow>=2.14",
 ]
