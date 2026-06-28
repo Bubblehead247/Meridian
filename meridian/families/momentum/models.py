@@ -85,6 +85,19 @@ class RelativeStrengthModel(CrossSectionalModel):
     quantile = 0.3
 
 
+@register_model("momentum", "relative_strength_long_only")
+class RelativeStrengthLongOnlyModel(CrossSectionalModel):
+    """Cross-sectional: long the strongest names by trailing return; no short leg.
+
+    Long-only removes the catastrophic short drawdowns that occur in bull markets when
+    weak names still rise. Practical for a managed account where shorting is unavailable.
+    """
+
+    lookback = 60
+    quantile = 0.3
+    long_only = True
+
+
 @register_model("momentum", "dual_momentum")
 class DualMomentumModel(CrossSectionalModel):
     """Dual momentum: relative rank gated by absolute momentum.
@@ -103,4 +116,26 @@ class DualMomentumModel(CrossSectionalModel):
         absmom = np.sign(scores)
         sig = rel.where(~((rel > 0) & (absmom <= 0)), 0)   # drop longs w/o positive abs mom
         sig = sig.where(~((rel < 0) & (absmom >= 0)), 0)   # drop shorts w/o negative abs mom
+        return sig.astype(int)
+
+
+@register_model("momentum", "dual_momentum_long_only")
+class DualMomentumLongOnlyModel(CrossSectionalModel):
+    """Dual momentum, long-only: long top-ranked names with positive absolute momentum only.
+
+    The absolute momentum gate (positive 120-day return required to enter long) acts as a
+    bear-market filter — the portfolio moves to cash when all names have falling momentum,
+    which dramatically limits drawdown vs. the long/short version.
+    """
+
+    lookback = 120
+    quantile = 0.3
+    long_only = True
+
+    def signals(self, prices_by_symbol):
+        scores = momentum_scores(prices_by_symbol, self.lookback)
+        rel = rank_signals(scores, quantile=self.quantile, long_only=True)
+        absmom = np.sign(scores)
+        # Drop longs where absolute momentum is non-positive (cash those positions)
+        sig = rel.where(~((rel > 0) & (absmom <= 0)), 0)
         return sig.astype(int)
