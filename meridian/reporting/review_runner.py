@@ -14,8 +14,6 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date, timedelta
 
-import pandas as pd
-
 from meridian.data import load_ohlcv
 from meridian.pipeline.records import load_records
 from meridian.portfolio.allocation import SLEEVE_ALLOCATIONS, seed_ledgers
@@ -64,23 +62,56 @@ def _aggregate_scorecard(records: list) -> dict:
     }
 
 
-def _today_signals_brief(equity: float = 10_000.0, price_start: str = "2023-01-01") -> dict[str, dict]:
-    """Return {family: {model/symbol: {sym: signal}}} for reporting.
-
-    Runs the live runner in dry-run mode; extracts signal dicts only.
-    """
+def _dry_run_decisions(equity: float = 10_000.0, price_start: str = "2023-01-01") -> list:
+    """Run today's live picks in dry-run mode (no orders); return the decisions."""
     from meridian.execution.broker import SimulatedBroker
     from meridian.execution.live_runner import run_paper_session
 
     broker = SimulatedBroker(cash=equity)
-    decisions = run_paper_session(broker, account_equity=equity,
-                                  price_start=price_start, dry_run=True)
+    return run_paper_session(broker, account_equity=equity,
+                             price_start=price_start, dry_run=True)
+
+
+def _today_signals_brief(decisions: list) -> dict[str, dict]:
+    """Return {family: {model/symbol: {sym: signal}}} for reporting."""
     result: dict[str, dict] = defaultdict(dict)
     for d in decisions:
         if not d.skipped:
             key = f"{d.model}/{d.symbol[:30]}"
             result[d.family][key] = d.signals
     return dict(result)
+
+
+def _render_sector_exposure(decisions: list) -> str:
+    """Markdown section: look-through sector exposure of today's held positions."""
+    from meridian.portfolio.sectors import (
+        DEFAULT_SECTOR_LIMIT,
+        flag_concentration,
+        lookthrough_exposures,
+        position_weights_from_decisions,
+    )
+
+    weights = position_weights_from_decisions(decisions)
+    exposures = lookthrough_exposures(weights)
+    flagged = set(flag_concentration(exposures))
+
+    lines = ["## Sector exposure (look-through)", ""]
+    if not exposures:
+        lines.append("No open positions.")
+        return "\n".join(lines)
+
+    lines.append("| Sector | % of account | |")
+    lines.append("|---|---:|---|")
+    for sector in sorted(exposures, key=exposures.get, reverse=True):
+        mark = "⚠️ over limit" if sector in flagged else ""
+        lines.append(f"| {sector} | {exposures[sector]:.1%} | {mark} |")
+    lines.append("")
+    lines.append(
+        f"Concentration limit: {DEFAULT_SECTOR_LIMIT:.0%} of account per sector. "
+        "ETF exposure is looked through to sectors using static approximate weights "
+        "(see `portfolio/sectors.py`)."
+    )
+    return "\n".join(lines)
 
 
 def _current_regime():
@@ -91,7 +122,7 @@ def _current_regime():
     regime should not flag sleeves as non-compliant in the review output).
     """
     try:
-        from meridian.regimes.labeler import build_regime_frame, RegimeLabel
+        from meridian.regimes.labeler import RegimeLabel, build_regime_frame
         frame = build_regime_frame("2024-01-01")
         if frame.empty:
             return None
@@ -124,7 +155,8 @@ def _render_strategy_inventory(paper_records: list, signals_by_family: dict) -> 
             sc = r.scorecard
             sharpe = f"{sc.get('sharpe', 0):.2f}" if sc.get("sharpe") is not None else "—"
             cagr   = f"{sc.get('cagr', 0):.1%}"   if sc.get("cagr")   is not None else "—"
-            dd     = f"{sc.get('max_drawdown', 0):.1%}" if sc.get("max_drawdown") is not None else "—"
+            mdd    = sc.get("max_drawdown")
+            dd     = f"{mdd:.1%}" if mdd is not None else "—"
             key = f"{r.model}/{r.symbol[:30]}"
             sigs = fam_signals.get(key, {})
             long_syms = [s for s, v in sigs.items() if v > 0]
@@ -159,7 +191,8 @@ def build_paper_review(
 
     benchmark_ret = _benchmark_return(lookback_days)
     regime        = _current_regime()
-    signals       = _today_signals_brief(equity=equity, price_start=price_start)
+    decisions     = _dry_run_decisions(equity=equity, price_start=price_start)
+    signals       = _today_signals_brief(decisions)
 
     review = run_monthly_review(
         ledgers,
@@ -169,8 +202,9 @@ def build_paper_review(
         current_regime=regime,
     )
 
+    sector_md    = _render_sector_exposure(decisions)
     inventory_md = _render_strategy_inventory(paper_records, signals)
-    return review, inventory_md
+    return review, sector_md + "\n\n" + inventory_md
 
 
 def render_full_review(review: MonthlyReview, inventory_md: str) -> str:
