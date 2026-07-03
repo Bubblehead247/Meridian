@@ -69,7 +69,9 @@ def test_retire_on_negative_expectancy():
 def test_retire_on_drawdown_breach():
     # Pin explicit criteria so the test doesn't break when the global default changes.
     strict = GraduationCriteria(max_drawdown_limit=0.20)
-    assert check_retirement(_led("core"), {"trade_expectancy": 0.01, "max_drawdown": -0.30}, criteria=strict)
+    assert check_retirement(
+        _led("core"), {"trade_expectancy": 0.01, "max_drawdown": -0.30}, criteria=strict
+    )
     assert check_retirement(_led("core", drawdown_cur=-0.25), GOOD, criteria=strict)
 
 

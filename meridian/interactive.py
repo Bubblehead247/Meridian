@@ -8,7 +8,14 @@ one strategy, the full gauntlet (rank all strategies), or the fund lifecycle. ``
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from meridian.data import loader
+
+if TYPE_CHECKING:
+    import pandas as pd
+    from rich.console import Console
+    from rich.text import Text
 
 # Silver metallic gradient: dark steel → bright highlight → dark steel
 _SILVER = [
@@ -19,7 +26,7 @@ _SILVER = [
 ]
 
 
-def _silver_text(line: str) -> "Text":
+def _silver_text(line: str) -> Text:
     """Apply the silver metallic gradient across one line of text."""
     from rich.text import Text
     t = Text()
@@ -41,13 +48,13 @@ _ART_LINES = [
 ]
 
 
-def _print_banner(console: "Console") -> None:  # type: ignore[name-defined]
+def _print_banner(console: Console) -> None:
     """3-D drop-shadow banner: shadow layer (near-black, +1 row +2 cols), then silver on top."""
     from rich.text import Text
 
     n = len(_ART_LINES)
     w = console.width
-    art_w = max(len(l) for l in _ART_LINES)
+    art_w = max(len(line) for line in _ART_LINES)
     left = max(0, (w - art_w) // 2)
     shadow_x = left + 2  # shadow sits 2 cols to the right
     border = _silver_text("═" * w)
@@ -151,7 +158,12 @@ def _load_one(symbol: str):
 
 
 def _do_single(symbols: list[str], input_fn, print_fn) -> None:
-    from meridian.pipeline import record_from_pipeline, run_pipeline, run_universe_pipeline, save_record
+    from meridian.pipeline import (
+        record_from_pipeline,
+        run_pipeline,
+        run_universe_pipeline,
+        save_record,
+    )
     from meridian.portfolio import StrategyLedger
 
     basket = len(symbols) > 1
@@ -207,19 +219,29 @@ def _do_gauntlet(symbols: list[str], print_fn) -> None:
 
 
 _NEXT_STEP: dict[str, str] = {
-    "backtest":     "Run walk-forward validation next (action 4 → tune, or re-run fund lifecycle). "
-                    "Rolling windows will show whether performance holds up across different market periods.",
-    "walk_forward": "Run the OOS holdout test next. This tests the strategy on 2020-2022 data it has "
-                    "never seen — the hardest gate before paper trading.",
-    "oos":          "Ready for paper trading. Connect the strategy to Alpaca paper mode and let it run "
-                    "on live prices for at least 30 days with no real capital at risk.",
-    "paper":        "Now in paper trading. Let it run on live prices for 30+ days, then re-run the fund "
-                    "lifecycle to check whether it qualifies for Pilot (1–3% of real capital).",
-    "pilot":        "In Pilot. After 90 days of live results within target metrics, promote to Proven "
-                    "and increase allocation to 5–10% of equity.",
-    "proven":       "In Proven. After 180 days promote to Core (10–20% of equity).",
-    "core":         "In Core. After 365 days of strong results promote to Elite (20%+ of equity).",
-    "elite":        "Elite — maximum allocation. Monitor monthly and retire if expectancy degrades.",
+    "backtest": (
+        "Run walk-forward validation next (action 4 → tune, or re-run fund lifecycle). "
+        "Rolling windows will show whether performance holds up across different market periods."
+    ),
+    "walk_forward": (
+        "Run the OOS holdout test next. This tests the strategy on 2020-2022 data it has "
+        "never seen — the hardest gate before paper trading."
+    ),
+    "oos": (
+        "Ready for paper trading. Connect the strategy to Alpaca paper mode and let it run "
+        "on live prices for at least 30 days with no real capital at risk."
+    ),
+    "paper": (
+        "Now in paper trading. Let it run on live prices for 30+ days, then re-run the fund "
+        "lifecycle to check whether it qualifies for Pilot (1–3% of real capital)."
+    ),
+    "pilot": (
+        "In Pilot. After 90 days of live results within target metrics, promote to Proven "
+        "and increase allocation to 5–10% of equity."
+    ),
+    "proven": "In Proven. After 180 days promote to Core (10–20% of equity).",
+    "core": "In Core. After 365 days of strong results promote to Elite (20%+ of equity).",
+    "elite": "Elite — maximum allocation. Monitor monthly and retire if expectancy degrades.",
 }
 
 
@@ -231,7 +253,9 @@ def _print_next_steps(review, print_fn) -> None:
     print_fn("\n--- Next steps ---")
     for sleeve in actionable:
         next_stage = sleeve.graduation[1] if sleeve.graduation[1] else sleeve.stage
-        guidance = _NEXT_STEP.get(next_stage, _NEXT_STEP.get(sleeve.stage, "Review scorecard and re-run."))
+        guidance = _NEXT_STEP.get(
+            next_stage, _NEXT_STEP.get(sleeve.stage, "Review scorecard and re-run.")
+        )
         print_fn(f"\n  {sleeve.sleeve} ({sleeve.family})  →  {sleeve.action.upper()}")
         print_fn(f"  Current stage : {sleeve.stage}")
         print_fn(f"  Next stage    : {next_stage}")
@@ -285,7 +309,9 @@ def _do_fund(symbols: list[str], input_fn, print_fn) -> None:
                  + ", ".join(f"{s.sleeve}={s.action}" for s in review.sleeves))
     else:
         prices, frame = _load_one(symbols[0])
-        _ledgers, review = run_fund(prices, frame, symbol=symbols[0], equity=equity, regime_frame=regime_frame)
+        _ledgers, review = run_fund(
+            prices, frame, symbol=symbols[0], equity=equity, regime_frame=regime_frame
+        )
         print_fn(f"\nFund — {symbols[0]}: "
                  + ", ".join(f"{s.sleeve}={s.action}" for s in review.sleeves))
         _show_fund_chart(_ledgers, prices, frame, symbols[0], equity)
@@ -340,7 +366,6 @@ _STAGE_BAR = {
 
 def _family_chart(records: list, print_fn) -> None:
     """Print a family × stage progress chart above the saved strategies list."""
-    from collections import defaultdict
     best: dict[str, tuple] = {}
     for r in records:
         rank = _STAGE_RANK.get(r.stage_passed, 0)
@@ -350,7 +375,10 @@ def _family_chart(records: list, print_fn) -> None:
             best[r.family] = (rank, sharpe, r.stage_passed, r.model, r.symbol)
 
     stages = ["backtest", "walk_forward", "oos", "paper", "pilot", "proven", "core", "elite"]
-    header = f"  {'family':<22}  {'stage':<13}  {'best model':<30}  {'sym':<5}  {'sharpe':>6}  progress"
+    header = (
+        f"  {'family':<22}  {'stage':<13}  {'best model':<30}  "
+        f"{'sym':<5}  {'sharpe':>6}  progress"
+    )
     print_fn("\nFamily status:")
     print_fn("  " + "─" * (len(header) - 2))
     print_fn(header)
@@ -378,7 +406,10 @@ def _do_saved(input_fn, print_fn) -> None:
 
     _family_chart(records, print_fn)
 
-    header = f"  {'#':>3}  {'family/model':<32}  {'sym':<6}  {'stage':<12}  {'date':<10}  {'sharpe':>6}  {'cagr':>7}  {'mdd':>7}"
+    header = (
+        f"  {'#':>3}  {'family/model':<32}  {'sym':<6}  {'stage':<12}  "
+        f"{'date':<10}  {'sharpe':>6}  {'cagr':>7}  {'mdd':>7}"
+    )
     print_fn(f"All records ({len(records)} total):")
     print_fn(header)
     print_fn("  " + "-" * (len(header) - 2))
@@ -387,7 +418,8 @@ def _do_saved(input_fn, print_fn) -> None:
         sc = rec.scorecard
         row = (
             f"  {i:>3}  {qn:<32}  {rec.symbol:<6}  {rec.stage_passed:<12}  {rec.saved_at:<10}"
-            f"  {_fmt(sc.get('sharpe')):>6}  {_fmt(sc.get('cagr'), pct=True):>7}  {_fmt(sc.get('max_drawdown'), pct=True):>7}"
+            f"  {_fmt(sc.get('sharpe')):>6}  {_fmt(sc.get('cagr'), pct=True):>7}"
+            f"  {_fmt(sc.get('max_drawdown'), pct=True):>7}"
         )
         print_fn(row)
 
@@ -399,7 +431,10 @@ def _do_saved(input_fn, print_fn) -> None:
     sc = rec.scorecard
     print_fn(f"\n{'=' * 56}")
     print_fn(f"  {rec.family}/{rec.model}  on  {rec.symbol}")
-    print_fn(f"  stage: {rec.stage_passed}   saved: {rec.saved_at}   graduation: {rec.ledger.get('stage', '?')}")
+    print_fn(
+        f"  stage: {rec.stage_passed}   saved: {rec.saved_at}   "
+        f"graduation: {rec.ledger.get('stage', '?')}"
+    )
     print_fn(f"{'=' * 56}")
 
     sections = {

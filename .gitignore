@@ -48,3 +48,8 @@ Thumbs.db
 
 # Vendored external datasets (large, fetched separately)
 external/
+
+# Local artifacts and secrets
+meridian.log
+graphify-out/
+Meridian API.txt

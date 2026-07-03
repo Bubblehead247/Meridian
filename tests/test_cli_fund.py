@@ -85,6 +85,7 @@ def test_cs_fund_runs_and_produces_monthly_review(monkeypatch):
     basket = {s: _make_series(d) for s, d in zip(
         ["XLK", "XLF", "XLE", "XLY", "XLV", "XLI"],
         [0.0006, 0.0003, 0.0, -0.0002, 0.0004, 0.0001],
+        strict=True,
     )}
 
     ledgers, review = run_cs_fund(basket, equity=100_000.0)

@@ -100,6 +100,7 @@ def _evaluate_checklist(
     limits: RiskLimits,
     criteria: GraduationCriteria,
     config: ReviewConfig,
+    as_of: str,
 ) -> SleeveAction:
     """Run the checklist for one sleeve and decide its capital action."""
     from meridian.pipeline.graduation import evaluate  # lazy: avoids portfolio<->pipeline cycle
@@ -109,7 +110,7 @@ def _evaluate_checklist(
     excess = return_pct - benchmark_return
 
     suspend, reasons = check_suspension(ledger, account_equity, limits)
-    grad = evaluate(ledger, scorecard, criteria=criteria)
+    grad = evaluate(ledger, scorecard, as_of=as_of, criteria=criteria)
     permitted = _permitted(ledger.family, current_regime)
 
     rationale: list[str] = []
@@ -178,7 +179,6 @@ def run_monthly_review(
         benchmark_return: the benchmark's return over the review period (e.g. SPY).
         sleeve_returns: optional ``{sleeve: returns}`` for the correlation block.
     """
-    from meridian.pipeline.graduation import GraduationCriteria  # lazy: avoids import cycle
 
     from meridian.pipeline.graduation import criteria_for_family  # lazy: avoids import cycle
 
@@ -192,7 +192,7 @@ def run_monthly_review(
             account_equity=account_equity, benchmark_return=benchmark_return,
             current_regime=current_regime, limits=limits,
             criteria=criteria or criteria_for_family(led.family),
-            config=config,
+            config=config, as_of=as_of,
         )
         for led in ledgers
     ]

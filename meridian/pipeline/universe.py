@@ -11,12 +11,17 @@ with a ``.returns`` series and a ``.name`` attribute works (i.e. CrossSectionalM
 
 from __future__ import annotations
 
-import pandas as pd
-
 import dataclasses
 
+import pandas as pd
+
 from meridian.pipeline.backtest import StageResult
-from meridian.pipeline.graduation import GraduationCriteria, advance, criteria_for_family, passes_metric_bar
+from meridian.pipeline.graduation import (
+    GraduationCriteria,
+    advance,
+    criteria_for_family,
+    passes_metric_bar,
+)
 from meridian.scoring import scorecard
 from meridian.validation.walkforward import WalkForwardSpec, make_folds
 
@@ -82,7 +87,11 @@ def run_universe_walk_forward_stage(
         stage="walk_forward",
         model=model.name,
         scorecard=card,
-        passed=passes_metric_bar(card, dataclasses.replace(criteria, min_periods=0) if criteria else GraduationCriteria(min_periods=0)),
+        passed=passes_metric_bar(
+            card,
+            dataclasses.replace(criteria, min_periods=0) if criteria
+            else GraduationCriteria(min_periods=0),
+        ),
         detail={"n_folds": len(folds), "oos_periods": int(len(oos)),
                 "n_symbols": len(prices_by_symbol)},
     )
@@ -116,7 +125,9 @@ def run_universe_oos_stage(
         return StageResult("oos", model.name, {}, False, {"n_oos": 0})
 
     oos_res = model.backtest(oos, cost_bps=cost_bps)
-    oos_card = scorecard(oos_res.returns, regime_frame=regime_frame, periods_per_year=periods_per_year)
+    oos_card = scorecard(
+        oos_res.returns, regime_frame=regime_frame, periods_per_year=periods_per_year
+    )
 
     comparison = {"degraded": False}
     if ins:
@@ -124,7 +135,10 @@ def run_universe_oos_stage(
         is_card = scorecard(is_res.returns, periods_per_year=periods_per_year)
         comparison = compare_oos_to_is(oos_card, is_card, tolerance=tolerance)
 
-    oos_criteria = dataclasses.replace(criteria, min_periods=0) if criteria else GraduationCriteria(min_periods=0)
+    oos_criteria = (
+        dataclasses.replace(criteria, min_periods=0) if criteria
+        else GraduationCriteria(min_periods=0)
+    )
     passed = passes_metric_bar(oos_card, oos_criteria) and not comparison["degraded"]
     return StageResult(
         stage="oos",
@@ -164,7 +178,9 @@ def run_universe_pipeline(
     history is all that is needed. Returns ``{stage: StageResult}``.
     """
     if criteria is None:
-        criteria = criteria_for_family(ledger.family) if ledger is not None else GraduationCriteria()
+        criteria = (
+            criteria_for_family(ledger.family) if ledger is not None else GraduationCriteria()
+        )
     common = dict(
         cost_bps=cost_bps, regime_frame=regime_frame,
         periods_per_year=periods_per_year, criteria=criteria,

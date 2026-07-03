@@ -6,27 +6,17 @@ Unicode line chart in the terminal, and prints period return labels.
 
 from __future__ import annotations
 
-import json
 import shutil
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from meridian.analytics.metrics import equity_curve
+from meridian.portfolio.live_picks import live_pick_weight, load_live_picks
 
 _LOOKBACKS = [("10yr", 2520), ("5yr", 1260), ("3yr", 756), ("1yr", 252), ("6mo", 126)]
 _CHART_HEIGHT = 10
 _MINI_HEIGHT  = 6
-
-_LIVE_PICKS_FILE = Path(__file__).parent.parent.parent / "live_picks.json"
-
-
-def load_live_picks() -> dict[str, dict]:
-    """Return {family: {model, symbol}} from live_picks.json."""
-    if _LIVE_PICKS_FILE.exists():
-        return json.loads(_LIVE_PICKS_FILE.read_text(encoding="utf-8"))
-    return {}
 
 
 def _weighted_returns(returns_by_sleeve: dict[str, tuple[pd.Series, float]]) -> pd.Series:
@@ -111,7 +101,7 @@ def _print_chart(
         print(title)
     print()
 
-    for i, (row_str, tick) in enumerate(zip(rows, ticks)):
+    for i, (row_str, tick) in enumerate(zip(rows, ticks, strict=False)):
         label = f"{_fmt_dollar(tick):>7} "
         if use_rich:
             line = Text(label, style="dim")
@@ -130,7 +120,7 @@ def _print_chart(
         label_pos     = [int(i * chart_w / max(len(dates) - 1, 1)) for i in label_idx]
         year_labels   = [str(dates[i].year) for i in label_idx]
         x_label_row   = [" "] * chart_w
-        for pos, yr in zip(label_pos, year_labels):
+        for pos, yr in zip(label_pos, year_labels, strict=False):
             for j, ch in enumerate(yr):
                 if pos + j < chart_w:
                     x_label_row[pos + j] = ch
@@ -163,7 +153,6 @@ def build_fund_returns(
     from meridian.execution.live_runner import _expand_symbol
     from meridian.families import create_model
     from meridian.pipeline.records import load_records
-    from meridian.portfolio.allocation import SLEEVE_ALLOCATIONS
 
     picks_cfg = load_live_picks()
 
@@ -216,13 +205,7 @@ def build_fund_returns(
             print(f"  Warning: backtest failed for {family}/{model_name}/{symbol}: {exc}")
             continue
 
-        from meridian.portfolio.allocation import FAMILY_TO_SLEEVE
-        target = FAMILY_TO_SLEEVE.get(family, family)
-        if target != family and target in all_families:
-            # Another family is the primary holder of this sleeve — monitoring only
-            sleeve_weight = 0.0
-        else:
-            sleeve_weight = SLEEVE_ALLOCATIONS.get(target, 0.0)
+        sleeve_weight   = live_pick_weight(family, all_families)
         out[family]     = (bt.returns, sleeve_weight)
 
     return out

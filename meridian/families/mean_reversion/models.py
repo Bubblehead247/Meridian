@@ -93,7 +93,7 @@ class ZScoreNeutralRegimeModel(Model):
         roc60 = prices / prices.shift(self.trend_window) - 1.0
         pos = pd.Series(np.nan, index=prices.index)
         pos[(z < -self.entry_z) & (roc60 > -self.trend_band)] =  1.0   # long: oversold, not in bear
-        pos[(z >  self.entry_z) & (roc60 <  self.trend_band)] = -1.0   # short: overbought, not in bull
+        pos[(z >  self.entry_z) & (roc60 <  self.trend_band)] = -1.0   # short: overbought, not bull
         pos[z.abs() < 0.5]                                     =  0.0   # exit near mean
         return pos.ffill().fillna(0).astype(int)
 

@@ -11,7 +11,10 @@ from meridian.experiments.gauntlet import (
     gauntlet_universe,
 )
 
-_COLS = ["family", "model", "passed", "sharpe", "cagr", "total_return", "max_drawdown", "n_trades", "trades_per_year"]
+_COLS = [
+    "family", "model", "passed", "sharpe", "cagr", "total_return",
+    "max_drawdown", "n_trades", "trades_per_year",
+]
 
 
 def _prices(n=500):

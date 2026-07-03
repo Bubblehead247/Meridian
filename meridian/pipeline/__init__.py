@@ -16,6 +16,13 @@ from meridian.pipeline.graduation import (
 )
 from meridian.pipeline.oos import compare_oos_to_is, run_oos_stage
 from meridian.pipeline.orchestrator import run_cross_sectional_pipeline, run_pipeline
+from meridian.pipeline.records import (
+    DEFAULT_RECORDS_DIR,
+    StrategyRecord,
+    load_records,
+    record_from_pipeline,
+    save_record,
+)
 from meridian.pipeline.research import (
     Hypothesis,
     ResearchLog,
@@ -27,13 +34,6 @@ from meridian.pipeline.universe import (
     run_universe_oos_stage,
     run_universe_pipeline,
     run_universe_walk_forward_stage,
-)
-from meridian.pipeline.records import (
-    DEFAULT_RECORDS_DIR,
-    StrategyRecord,
-    load_records,
-    record_from_pipeline,
-    save_record,
 )
 from meridian.pipeline.walk_forward import run_walk_forward_stage
 

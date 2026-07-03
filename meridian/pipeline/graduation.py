@@ -150,7 +150,11 @@ def check_retirement(
         return False
     criteria = criteria or GraduationCriteria()
     expectancy = _get(scorecard, "trade_expectancy", "expectancy", default=ledger.expectancy)
-    if expectancy is not None and expectancy == expectancy and expectancy <= criteria.min_expectancy:
+    if (
+        expectancy is not None
+        and expectancy == expectancy
+        and expectancy <= criteria.min_expectancy
+    ):
         return True
     dd = _get(scorecard, "max_drawdown", default=ledger.drawdown_max)
     if dd is not None and dd == dd and not _dd_within_limit(dd, criteria):

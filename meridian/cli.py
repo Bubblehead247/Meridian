@@ -76,9 +76,15 @@ def _cmd_list(args) -> int:
         from meridian.pipeline import load_records
         records = load_records()
         if not records:
-            print("No saved strategies found (run 'meridian pipeline <model> --symbol <SYM>' first).")
+            print(
+                "No saved strategies found "
+                "(run 'meridian pipeline <model> --symbol <SYM>' first)."
+            )
             return 0
-        print(f"{'#':>3}  {'family/model':<32}  {'symbol':<6}  {'stage':<12}  {'date':<10}  {'sharpe':>6}  {'cagr':>7}  {'mdd':>7}")
+        print(
+            f"{'#':>3}  {'family/model':<32}  {'symbol':<6}  {'stage':<12}  "
+            f"{'date':<10}  {'sharpe':>6}  {'cagr':>7}  {'mdd':>7}"
+        )
         print("-" * 98)
         for i, rec in enumerate(records, 1):
             qualified = f"{rec.family}/{rec.model}"
@@ -86,9 +92,12 @@ def _cmd_list(args) -> int:
             cagr   = rec.scorecard.get("cagr")
             mdd    = rec.scorecard.get("max_drawdown")
             sh_s  = f"{sharpe:6.2f}" if isinstance(sharpe, float) and sharpe == sharpe else "   n/a"
-            ca_s  = f"{cagr:6.1%}"   if isinstance(cagr,   float) and cagr   == cagr   else "    n/a"
-            mdd_s = f"{mdd:6.1%}"    if isinstance(mdd,    float) and mdd    == mdd    else "    n/a"
-            print(f"{i:>3}  {qualified:<32}  {rec.symbol:<6}  {rec.stage_passed:<12}  {rec.saved_at:<10}  {sh_s}  {ca_s}  {mdd_s}")
+            ca_s  = f"{cagr:6.1%}" if isinstance(cagr, float) and cagr == cagr else "    n/a"
+            mdd_s = f"{mdd:6.1%}" if isinstance(mdd, float) and mdd == mdd else "    n/a"
+            print(
+                f"{i:>3}  {qualified:<32}  {rec.symbol:<6}  {rec.stage_passed:<12}  "
+                f"{rec.saved_at:<10}  {sh_s}  {ca_s}  {mdd_s}"
+            )
         return 0
 
     def _models():
@@ -190,7 +199,11 @@ def _run_cross_sectional(model, args, load_ohlcv, symbols) -> int:
         stop_on_fail=not args.all_stages,
     )
     symbol_str = "_".join(symbols)
-    print(f"{family}/{name} on {symbol_str}  (cross-sectional, {len(universe)} symbols, {len(next(iter(universe.values())))} bars)")
+    n_bars = len(next(iter(universe.values())))
+    print(
+        f"{family}/{name} on {symbol_str}  "
+        f"(cross-sectional, {len(universe)} symbols, {n_bars} bars)"
+    )
     for stage, res in results.items():
         sharpe = res.scorecard.get("sharpe")
         sharpe_s = f"{sharpe:6.2f}" if isinstance(sharpe, float) and sharpe == sharpe else "   n/a"
@@ -299,7 +312,6 @@ def _cmd_review(args) -> int:
     from pathlib import Path
 
     from meridian.reporting.review_runner import build_paper_review, render_full_review
-    from meridian.reporting.monthly_report import write_monthly_report
 
     print("Building monthly review…")
     review, inventory_md = build_paper_review(
@@ -318,7 +330,10 @@ def _cmd_review(args) -> int:
     print(f"Report: {path}")
     print(f"Benchmark (SPY {args.lookback}d): {review.benchmark_return:+.2%}")
     if review.regime:
-        print(f"Regime: trend={review.regime[0]}  vol={review.regime[1]}  breadth={review.regime[2]}")
+        print(
+            f"Regime: trend={review.regime[0]}  vol={review.regime[1]}  "
+            f"breadth={review.regime[2]}"
+        )
     print(f"Portfolio heat: {review.portfolio_heat:.2%}"
           + (" ⚠ breached" if review.heat_breached else ""))
     print()
@@ -357,7 +372,8 @@ def _cmd_run_paper(args) -> int:
 
     active = sum(1 for d in decisions if not d.skipped)
     orders = sum(len(d.orders) for d in decisions)
-    print(f"Done: {active} strategies processed, {orders} orders {'previewed' if args.dry_run else 'sent'}.")
+    verb = "previewed" if args.dry_run else "sent"
+    print(f"Done: {active} strategies processed, {orders} orders {verb}.")
     return 0
 
 

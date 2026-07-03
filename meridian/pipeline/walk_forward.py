@@ -11,12 +11,12 @@ slice-once pattern the universe validator uses — no walk-forward math is dupli
 
 from __future__ import annotations
 
+import dataclasses
+
 import pandas as pd
 
 from meridian.families.base import Model
 from meridian.pipeline.backtest import StageResult
-import dataclasses
-
 from meridian.pipeline.graduation import GraduationCriteria, passes_metric_bar
 from meridian.scoring import scorecard
 from meridian.validation.walkforward import WalkForwardSpec, make_folds
@@ -49,6 +49,10 @@ def run_walk_forward_stage(
         stage="walk_forward",
         model=model.name,
         scorecard=card,
-        passed=passes_metric_bar(card, dataclasses.replace(criteria, min_periods=0) if criteria else GraduationCriteria(min_periods=0)),
+        passed=passes_metric_bar(
+            card,
+            dataclasses.replace(criteria, min_periods=0) if criteria
+            else GraduationCriteria(min_periods=0),
+        ),
         detail={"n_folds": len(folds), "oos_periods": int(len(oos_ret))},
     )

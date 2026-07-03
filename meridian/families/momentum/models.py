@@ -9,7 +9,6 @@ Importing this module registers its models under the ``momentum`` family.
 from __future__ import annotations
 
 import numpy as np
-
 import pandas as pd
 
 from meridian.families.base import CrossSectionalModel, Model, MomentumModel, register_model

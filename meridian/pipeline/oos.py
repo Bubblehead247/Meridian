@@ -11,13 +11,13 @@ results match the backtest" check the graduation pilot gate needs.
 
 from __future__ import annotations
 
+import dataclasses
+
 import pandas as pd
 
 from meridian.data.splits import SplitSpec, split
 from meridian.families.base import Model
 from meridian.pipeline.backtest import StageResult
-import dataclasses
-
 from meridian.pipeline.graduation import GraduationCriteria, passes_metric_bar
 from meridian.scoring import scorecard_from_backtest
 
@@ -62,19 +62,26 @@ def run_oos_stage(
     if len(oos) == 0:
         return StageResult("oos", model.name, {}, False, {"n_oos": 0})
 
-    oos_res = model.backtest(oos, cost_bps=cost_bps, bars=_slice_bars(bars, oos.index), regime_frame=regime_frame)
+    oos_res = model.backtest(
+        oos, cost_bps=cost_bps, bars=_slice_bars(bars, oos.index), regime_frame=regime_frame
+    )
     oos_card = scorecard_from_backtest(
         oos_res, regime_frame=regime_frame, periods_per_year=periods_per_year
     )
 
     comparison = {"degraded": False}
     if len(ins):
-        is_res = model.backtest(ins, cost_bps=cost_bps, bars=_slice_bars(bars, ins.index), regime_frame=regime_frame)
+        is_res = model.backtest(
+            ins, cost_bps=cost_bps, bars=_slice_bars(bars, ins.index), regime_frame=regime_frame
+        )
         is_card = scorecard_from_backtest(is_res, periods_per_year=periods_per_year)
         comparison = compare_oos_to_is(oos_card, is_card, tolerance=tolerance)
 
     # OOS window is intentionally short (~756 bars); skip the full-history min_periods guard
-    oos_criteria = dataclasses.replace(criteria, min_periods=0) if criteria else GraduationCriteria(min_periods=0)
+    oos_criteria = (
+        dataclasses.replace(criteria, min_periods=0) if criteria
+        else GraduationCriteria(min_periods=0)
+    )
     passed = passes_metric_bar(oos_card, oos_criteria) and not comparison["degraded"]
     return StageResult(
         stage="oos",

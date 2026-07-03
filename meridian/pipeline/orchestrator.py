@@ -17,7 +17,12 @@ import pandas as pd
 
 from meridian.families.base import Model
 from meridian.pipeline.backtest import StageResult, run_backtest_stage
-from meridian.pipeline.graduation import GraduationCriteria, advance, criteria_for_family, passes_metric_bar
+from meridian.pipeline.graduation import (
+    GraduationCriteria,
+    advance,
+    criteria_for_family,
+    passes_metric_bar,
+)
 from meridian.pipeline.oos import compare_oos_to_is, run_oos_stage
 from meridian.pipeline.walk_forward import run_walk_forward_stage
 from meridian.portfolio.ledger import StrategyLedger
@@ -49,7 +54,9 @@ def run_pipeline(
     that does not clear the metric bar.
     """
     if criteria is None:
-        criteria = criteria_for_family(ledger.family) if ledger is not None else GraduationCriteria()
+        criteria = (
+            criteria_for_family(ledger.family) if ledger is not None else GraduationCriteria()
+        )
     common = dict(
         cost_bps=cost_bps, bars=bars, regime_frame=regime_frame,
         periods_per_year=periods_per_year, criteria=criteria,
@@ -111,7 +118,9 @@ def run_cross_sectional_pipeline(
     from meridian.validation.walkforward import WalkForwardSpec, make_folds
 
     if criteria is None:
-        criteria = criteria_for_family(ledger.family) if ledger is not None else GraduationCriteria()
+        criteria = (
+            criteria_for_family(ledger.family) if ledger is not None else GraduationCriteria()
+        )
 
     result = model.backtest(prices_by_symbol, cost_bps=cost_bps)
     n = len(result.returns)
@@ -120,7 +129,9 @@ def run_cross_sectional_pipeline(
         return scorecard_from_portfolio(result, index=index, periods_per_year=periods_per_year)
 
     def _stage_result(stage_name: str, card: dict, passed: bool, **detail) -> StageResult:
-        res = StageResult(stage=stage_name, model=model.name, scorecard=card, passed=passed, detail=detail)
+        res = StageResult(
+            stage=stage_name, model=model.name, scorecard=card, passed=passed, detail=detail
+        )
         if ledger is not None:
             adv_criteria = (
                 dataclasses.replace(criteria, min_periods=0)

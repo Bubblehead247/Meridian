@@ -14,8 +14,7 @@ import pandas as pd
 import pytest
 
 from meridian.families import create_model
-from meridian.families.base import CrossSectionalModel, register_model
-
+from meridian.families.base import CrossSectionalModel
 
 # ---------------------------------------------------------------------------
 # Helpers

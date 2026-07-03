@@ -15,7 +15,10 @@ from meridian.families import create_model, list_models
 from meridian.pipeline import run_backtest_stage, run_universe_backtest_stage
 from meridian.pipeline.graduation import criteria_for_family
 
-_COLUMNS = ["family", "model", "passed", "sharpe", "cagr", "total_return", "max_drawdown", "n_trades", "trades_per_year"]
+_COLUMNS = [
+    "family", "model", "passed", "sharpe", "cagr", "total_return",
+    "max_drawdown", "n_trades", "trades_per_year",
+]
 
 _PERIODS_PER_YEAR = 252
 

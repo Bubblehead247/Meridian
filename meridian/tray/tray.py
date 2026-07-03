@@ -16,8 +16,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
 import pystray
+from PIL import Image, ImageDraw, ImageFont
 
 HERE         = Path(__file__).parent
 PROJECT_ROOT = HERE.parent.parent
@@ -27,7 +27,7 @@ LOG_FILE     = PROJECT_ROOT / "meridian.log"
 GREEN = (34, 197, 94)    # Tailwind green-500
 WHITE = (255, 255, 255)
 
-_scheduler: "subprocess.Popen | None" = None
+_scheduler: subprocess.Popen | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -109,9 +109,9 @@ def make_icon() -> Image.Image:
     if font is None:
         font = ImageFont.load_default()
 
-    l, t, r, b = draw.textbbox((0, 0), text, font=font)
-    x = (size - (r - l)) / 2 - l
-    y = (size - (b - t)) / 2 - t
+    left, top, right, bottom = draw.textbbox((0, 0), text, font=font)
+    x = (size - (right - left)) / 2 - left
+    y = (size - (bottom - top)) / 2 - top
     draw.text((x, y), text, fill=WHITE, font=font)
     return img
 

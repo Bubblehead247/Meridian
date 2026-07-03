@@ -177,7 +177,7 @@ Meridian is the research-and-development platform for a diversified rules-based 
 | Sector rotation | Active — scaffold | 1–3 months |
 | Long-term ETF | Active — scaffold | 6–12+ months |
 | Event-driven | Deferred — stub only | TBD |
-| Volatility | Deferred — stub only | TBD |
+| Volatility | Active — scaffold | 1–3 weeks |
 
 ---
 
