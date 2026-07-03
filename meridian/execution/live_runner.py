@@ -12,7 +12,7 @@ Typical daily use:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 import pandas as pd
@@ -48,6 +48,7 @@ class StrategyDecision:
     weight: float = 0.0              # sleeve weight; 0 = monitor-only
     skipped: bool = False
     skip_reason: str = ""
+    day_changes: dict[str, float] = field(default_factory=dict)  # symbol → 1-day % change
 
 
 def _is_tradeable(symbol_str: str) -> bool:
@@ -184,6 +185,13 @@ def run_paper_session(
             else:
                 target_shares[sym] = round(per_position_equity / price, 6)
 
+        # --- 1-day % change per symbol (for the daily status message) ---
+        day_changes: dict[str, float] = {}
+        for sym in sigs:
+            series = prices.get(sym)
+            if series is not None and len(series) >= 2 and float(series.iloc[-2]) != 0:
+                day_changes[sym] = float(series.iloc[-1] / series.iloc[-2] - 1.0)
+
         # --- reconcile with broker ---
         fills: list[Fill] = []
         if not dry_run:
@@ -207,7 +215,7 @@ def run_paper_session(
         decisions.append(StrategyDecision(
             family=family, model=model_name, symbol=symbol, as_of=today,
             signals=sigs, target_shares=target_shares, orders=fills,
-            weight=weight,
+            weight=weight, day_changes=day_changes,
         ))
 
     if not dry_run:

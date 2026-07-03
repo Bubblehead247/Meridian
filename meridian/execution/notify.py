@@ -69,27 +69,22 @@ def notify_exit(fill: "Fill", family: str, model: str) -> None:
 
 
 def notify_daily_status(decisions: list["StrategyDecision"]) -> None:
-    """Send one daily summary message covering all active strategies."""
-    active = [d for d in decisions if not d.skipped and d.weight > 0]
-    skipped = [d for d in decisions if d.skipped]
-
-    lines: list[str] = [f"Meridian Daily Status — {date.today()}", ""]
-
-    for d in active:
-        n_long = sum(1 for v in d.signals.values() if v > 0)
-        n_flat = sum(1 for v in d.signals.values() if v == 0)
-        order_count = len(d.orders)
-        lines.append(f"{d.family}/{d.model}")
-        lines.append(f"  {d.symbol}  |  long={n_long} flat={n_flat}  |  orders={order_count}")
+    """Send one daily message: each held ticker and its 1-day % move."""
+    held: dict[str, float] = {}  # symbol → day change (NaN when unknown)
+    for d in decisions:
+        if d.skipped or d.weight <= 0:
+            continue
         for sym, shares in d.target_shares.items():
             if shares != 0:
-                lines.append(f"    {sym}: {shares:+.2f} sh")
+                held[sym] = d.day_changes.get(sym, float("nan"))
 
-    if skipped:
-        lines.append("")
-        lines.append(f"Skipped ({len(skipped)}):")
-        for d in skipped:
-            lines.append(f"  {d.family}/{d.model} — {d.skip_reason}")
+    lines: list[str] = [f"Meridian Daily Status — {date.today()}", ""]
+    if held:
+        for sym in sorted(held):
+            chg = held[sym]
+            lines.append(f"{sym}  {chg:+.2%}" if chg == chg else f"{sym}  n/a")
+    else:
+        lines.append("No open positions.")
 
-    title = f"Meridian Daily Status ({len(active)} active)"
-    _send(title, "\n".join(lines), priority="default", tags="bar_chart")
+    title = f"Meridian Daily Status ({len(held)} positions)"
+    _send(title, "\n".join(lines).rstrip(), priority="default", tags="bar_chart")
