@@ -3,10 +3,15 @@
 Topic: Meridian-62926
 Sends via the public ntfy.sh server (no auth required for this topic).
 
-Three public functions:
-- notify_entry(fill, family, model)
-- notify_exit(fill, family, model)
+Public functions:
+- notify_entry(fill, family, model, last_close=None)
+- notify_exit(fill, family, model, last_close=None)
+- notify_fill(record) — morning confirmation with the actual fill price
 - notify_daily_status(decisions)
+
+Orders sent after the close (the 16:30 ET session) have no fill price yet —
+those messages say "Order placed" with the last close as a reference price.
+The actual fill price arrives the next morning via notify_fill.
 
 Each is a no-op on network failure — never raise in the hot path.
 """
@@ -44,28 +49,68 @@ def _send(title: str, message: str, priority: str = "default", tags: str = "") -
         pass
 
 
-def notify_entry(fill: "Fill", family: str, model: str) -> None:
-    """Notify that a position was entered."""
+def _price_line(direction: str, fill: "Fill", last_close: float | None) -> str:
+    """First message line: real price when filled, reference price when pending."""
+    head = f"{direction} {abs(fill.qty):.2f} shares of {fill.symbol}"
+    if getattr(fill, "filled", True) and fill.price > 0:
+        return f"{head} @ ${fill.price:.2f}"
+    if last_close is not None and last_close > 0:
+        return f"{head} (last close ${last_close:.2f} — fills at next market open)"
+    return f"{head} (fills at next market open)"
+
+
+def notify_entry(
+    fill: "Fill", family: str, model: str, last_close: float | None = None
+) -> None:
+    """Notify that a position was entered (or an entry order placed)."""
     direction = "BUY" if fill.qty > 0 else "SELL"
-    title = f"Trade Entry — {fill.symbol}"
+    pending = not (getattr(fill, "filled", True) and fill.price > 0)
+    title = (
+        f"Entry Order Placed — {fill.symbol}" if pending
+        else f"Trade Entry — {fill.symbol}"
+    )
     body = (
-        f"{direction} {abs(fill.qty):.2f} shares of {fill.symbol} @ ${fill.price:.2f}\n"
+        f"{_price_line(direction, fill, last_close)}\n"
         f"Family: {family}  |  Model: {model}\n"
         f"Date: {date.today()}"
     )
     _send(title, body, priority="high", tags="arrow_up,chart_with_upwards_trend")
 
 
-def notify_exit(fill: "Fill", family: str, model: str) -> None:
-    """Notify that a position was exited (qty is negative = sell-to-close)."""
+def notify_exit(
+    fill: "Fill", family: str, model: str, last_close: float | None = None
+) -> None:
+    """Notify that a position was exited (or an exit order placed)."""
     direction = "SELL" if fill.qty < 0 else "BUY TO COVER"
-    title = f"Trade Exit — {fill.symbol}"
+    pending = not (getattr(fill, "filled", True) and fill.price > 0)
+    title = (
+        f"Exit Order Placed — {fill.symbol}" if pending
+        else f"Trade Exit — {fill.symbol}"
+    )
     body = (
-        f"{direction} {abs(fill.qty):.2f} shares of {fill.symbol} @ ${fill.price:.2f}\n"
+        f"{_price_line(direction, fill, last_close)}\n"
         f"Family: {family}  |  Model: {model}\n"
         f"Date: {date.today()}"
     )
     _send(title, body, priority="high", tags="arrow_down,white_check_mark")
+
+
+def notify_fill(record: dict) -> None:
+    """Morning confirmation: an order from a previous session actually filled.
+
+    ``record`` is a trade-log dict with symbol, qty, price, family, model,
+    submitted (date the order was placed).
+    """
+    qty = float(record["qty"])
+    direction = "BUY" if qty > 0 else "SELL"
+    title = f"Order Filled — {record['symbol']}"
+    body = (
+        f"{direction} {abs(qty):.2f} shares of {record['symbol']}"
+        f" filled @ ${float(record['price']):.2f}\n"
+        f"Family: {record.get('family', '?')}  |  Model: {record.get('model', '?')}\n"
+        f"Order placed: {record.get('submitted', '?')}"
+    )
+    _send(title, body, priority="high", tags="white_check_mark,moneybag")
 
 
 def notify_daily_status(decisions: list["StrategyDecision"]) -> None:

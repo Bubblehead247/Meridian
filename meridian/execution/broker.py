@@ -15,17 +15,25 @@ same strategy code runs against a simulation or a real paper account.
 from __future__ import annotations
 
 import os
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 
 @dataclass
 class Fill:
-    """A completed order fill."""
+    """A completed order fill — or a submitted order awaiting its fill.
+
+    Orders sent after market close (the 16:30 ET session) don't fill until the
+    next open, so ``filled`` is False and ``price`` is 0.0 until the morning
+    reconcile job (`meridian reconcile`) fetches the real fill price.
+    """
 
     symbol: str
-    qty: float       # signed: + buy, - sell
-    price: float
+    qty: float           # signed: + buy, - sell
+    price: float         # actual fill price; 0.0 while not yet filled
+    order_id: str = ""   # broker order id ("" for the simulated broker)
+    filled: bool = True  # False = accepted by broker but not yet executed
 
 
 class BaseBroker(ABC):
@@ -128,5 +136,26 @@ class AlpacaBroker(BaseBroker):
             symbol=symbol, qty=abs(qty), side=side, time_in_force=TimeInForce.DAY
         )
         order = self._client.submit_order(req)
-        price = float(getattr(order, "filled_avg_price", None) or 0.0)
-        return Fill(symbol, float(qty), price)
+        order_id = str(order.id)
+
+        # During market hours a market order fills in well under a second; poll
+        # briefly for the real price. After hours it stays queued until the next
+        # open — return a pending Fill and let `meridian reconcile` pick it up.
+        for _ in range(3):
+            status, price = self.order_status(order_id)
+            if status == "filled" and price > 0:
+                return Fill(symbol, float(qty), price, order_id=order_id, filled=True)
+            if status in ("canceled", "expired", "rejected"):
+                break
+            time.sleep(1)
+        return Fill(symbol, float(qty), 0.0, order_id=order_id, filled=False)
+
+    def order_status(self, order_id: str) -> tuple[str, float]:  # pragma: no cover
+        """Return (status, filled_avg_price) for an order; ("unknown", 0.0) on error."""
+        try:
+            order = self._client.get_order_by_id(order_id)
+            status = str(getattr(order.status, "value", order.status)).lower()
+            price = float(getattr(order, "filled_avg_price", None) or 0.0)
+            return status, price
+        except Exception:
+            return "unknown", 0.0

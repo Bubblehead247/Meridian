@@ -377,6 +377,31 @@ def _cmd_run_paper(args) -> int:
     return 0
 
 
+def _cmd_reconcile(args) -> int:
+    """Price yesterday's pending orders against actual Alpaca fills."""
+    from meridian.execution.broker import AlpacaBroker
+    from meridian.execution.reconcile import load_pending_orders, reconcile_pending_orders
+
+    pending = load_pending_orders()
+    if not pending:
+        print("No pending orders to reconcile.")
+        return 0
+
+    try:
+        broker = AlpacaBroker(paper=not args.live)
+    except (ImportError, ValueError) as exc:
+        print(f"Broker init failed: {exc}", file=sys.stderr)
+        return 1
+
+    records = reconcile_pending_orders(broker)
+    for r in records:
+        print(f"  {r['side'].upper()} {abs(r['qty']):.2f} {r['symbol']} "
+              f"filled @ ${r['price']:.2f} (placed {r['submitted']})")
+    remaining = len(load_pending_orders())
+    print(f"Done: {len(records)} fills recorded, {remaining} orders still pending.")
+    return 0
+
+
 def _cmd_chart(args) -> int:
     """Render per-family equity charts then the combined fund curve."""
     from meridian.visualization.fund_chart import build_fund_returns, show_all_family_charts
@@ -490,6 +515,13 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--live", action="store_true",
                     help="Use the live Alpaca endpoint instead of paper (default: paper)")
     rp.set_defaults(func=_cmd_run_paper)
+
+    rcp = sub.add_parser(
+        "reconcile", help="Fetch actual fill prices for pending orders and log/notify them"
+    )
+    rcp.add_argument("--live", action="store_true",
+                     help="Use the live Alpaca endpoint instead of paper (default: paper)")
+    rcp.set_defaults(func=_cmd_reconcile)
 
     cp = sub.add_parser(
         "chart", help="Render the fund equity curve for the live picks in the terminal"

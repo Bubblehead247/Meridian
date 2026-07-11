@@ -1,9 +1,11 @@
 """
 main.py — Meridian scheduler loop (child process of tray.py).
 
-Fires at 16:30 ET on every US equities trading day:
-  1. meridian run-paper   — compute signals and send orders to Alpaca
-  2. meridian review      — write monthly report (first trading day of month only)
+Fires twice on every US equities trading day:
+  9:45 ET — meridian reconcile  — fetch actual fill prices for orders placed
+                                  after yesterday's close; log and notify them
+ 16:30 ET — meridian run-paper  — compute signals and send orders to Alpaca
+            meridian review     — monthly report (first trading day of month only)
 
 Logs to meridian.log at the project root.
 
@@ -121,6 +123,15 @@ def run_paper_session() -> None:
     _run_cmd("run-paper", ["run-paper"])
 
 
+def run_reconcile() -> None:
+    """Run meridian reconcile — price yesterday's pending orders."""
+    today = datetime.now(ET).date()
+    if not is_trading_day(today):
+        logger.info("Market closed today — skipping reconcile.")
+        return
+    _run_cmd("reconcile", ["reconcile"])
+
+
 def run_monthly_review() -> None:
     """Run meridian review on the first trading day of each month."""
     today = datetime.now(ET).date()
@@ -144,15 +155,26 @@ def fire() -> None:
 FIRE_HOUR   = 16
 FIRE_MINUTE = 30
 
+RECON_HOUR   = 9
+RECON_MINUTE = 45
+
 
 def run() -> None:
-    """Block forever, firing the 4:30 PM ET job once per trading day."""
-    logger.info("Meridian scheduler started (fires at 16:30 ET on trading days).")
-    last_run: date | None = None
+    """Block forever: reconcile at 9:45 ET, paper session at 16:30 ET, daily."""
+    logger.info(
+        "Meridian scheduler started (reconcile 9:45 ET, session 16:30 ET, trading days)."
+    )
+    last_run:   date | None = None
+    last_recon: date | None = None
 
     while True:
         now_et = datetime.now(ET)
         today  = now_et.date()
+
+        past_recon_time = (now_et.hour, now_et.minute) >= (RECON_HOUR, RECON_MINUTE)
+        if past_recon_time and last_recon != today:
+            last_recon = today
+            run_reconcile()
 
         past_fire_time = (now_et.hour, now_et.minute) >= (FIRE_HOUR, FIRE_MINUTE)
         if past_fire_time and last_run != today:

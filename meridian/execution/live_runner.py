@@ -20,6 +20,7 @@ import pandas as pd
 from meridian.data import load_ohlcv
 from meridian.execution.broker import BaseBroker, Fill
 from meridian.execution.notify import notify_daily_status, notify_entry, notify_exit
+from meridian.execution.reconcile import add_pending_order, record_fill
 from meridian.families import create_model
 from meridian.portfolio.allocation import FAMILY_TO_SLEEVE, SLEEVE_ALLOCATIONS
 from meridian.portfolio.live_picks import live_pick_weight, load_live_picks
@@ -207,10 +208,19 @@ def run_paper_session(
                     fill = broker.market_order(sym, delta)
                     if fill is not None:
                         fills.append(fill)
+                        # Real broker orders carry an order_id: log actual
+                        # fills now, queue unfilled ones (e.g. placed after
+                        # the close) for the morning reconcile. Simulated
+                        # fills stay out of the permanent trade log.
+                        if fill.order_id:
+                            if fill.filled and fill.price > 0:
+                                record_fill(fill, family, model_name)
+                            else:
+                                add_pending_order(fill, family, model_name)
                         if fill.qty > 0:
-                            notify_entry(fill, family, model_name)
+                            notify_entry(fill, family, model_name, last_close=price)
                         else:
-                            notify_exit(fill, family, model_name)
+                            notify_exit(fill, family, model_name, last_close=price)
 
         decisions.append(StrategyDecision(
             family=family, model=model_name, symbol=symbol, as_of=today,

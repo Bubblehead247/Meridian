@@ -49,6 +49,9 @@ Thumbs.db
 # Vendored external datasets (large, fetched separately)
 external/
 
+# Live account state (pending orders, trade log, strategy ledgers)
+ledger/
+
 # Local artifacts and secrets
 meridian.log
 graphify-out/

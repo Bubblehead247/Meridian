@@ -12,7 +12,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from meridian.execution.broker import Fill
-from meridian.execution.notify import _NTFY_URL, notify_daily_status, notify_entry, notify_exit
+from meridian.execution.notify import (
+    _NTFY_URL,
+    notify_daily_status,
+    notify_entry,
+    notify_exit,
+    notify_fill,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +129,29 @@ def test_notify_entry_priority_is_high():
     assert calls[0]["priority"] == "high"
 
 
+def test_notify_entry_pending_order_says_order_placed():
+    """After-hours orders have no fill price — message must not show $0.00."""
+    fake_open, calls = _capture_request()
+    fill = Fill(symbol="SPY", qty=10.0, price=0.0, order_id="abc", filled=False)
+    with patch("urllib.request.urlopen", fake_open):
+        notify_entry(fill, "mean_reversion", "zscore_21", last_close=450.12)
+    assert "Order Placed" in calls[0]["title"]
+    msg = calls[0]["message"]
+    assert "$0.00" not in msg
+    assert "last close $450.12" in msg
+    assert "fills at next market open" in msg
+
+
+def test_notify_entry_pending_without_last_close():
+    fake_open, calls = _capture_request()
+    fill = Fill(symbol="SPY", qty=10.0, price=0.0, order_id="abc", filled=False)
+    with patch("urllib.request.urlopen", fake_open):
+        notify_entry(fill, "mean_reversion", "zscore_21")
+    msg = calls[0]["message"]
+    assert "$0.00" not in msg
+    assert "fills at next market open" in msg
+
+
 # ---------------------------------------------------------------------------
 # notify_exit
 # ---------------------------------------------------------------------------
@@ -161,6 +190,44 @@ def test_notify_exit_priority_is_high():
     with patch("urllib.request.urlopen", fake_open):
         notify_exit(fill, "mean_reversion", "zscore_21")
     assert calls[0]["priority"] == "high"
+
+
+def test_notify_exit_pending_order_says_order_placed():
+    fake_open, calls = _capture_request()
+    fill = Fill(symbol="SPY", qty=-10.0, price=0.0, order_id="abc", filled=False)
+    with patch("urllib.request.urlopen", fake_open):
+        notify_exit(fill, "mean_reversion", "zscore_21", last_close=455.00)
+    assert "Order Placed" in calls[0]["title"]
+    assert "$0.00" not in calls[0]["message"]
+    assert "last close $455.00" in calls[0]["message"]
+
+
+# ---------------------------------------------------------------------------
+# notify_fill (morning confirmation)
+# ---------------------------------------------------------------------------
+
+def test_notify_fill_message_contains_actual_price():
+    fake_open, calls = _capture_request()
+    record = {
+        "symbol": "SPY", "qty": 10.0, "price": 450.30,
+        "family": "mean_reversion", "model": "zscore_21",
+        "submitted": "2026-07-09",
+    }
+    with patch("urllib.request.urlopen", fake_open):
+        notify_fill(record)
+    assert "Order Filled" in calls[0]["title"]
+    assert "SPY" in calls[0]["title"]
+    msg = calls[0]["message"]
+    assert "BUY" in msg
+    assert "450.30" in msg
+    assert "2026-07-09" in msg
+
+
+def test_notify_fill_survives_network_error():
+    import urllib.error
+    record = {"symbol": "SPY", "qty": -5.0, "price": 450.30}
+    with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("timeout")):
+        notify_fill(record)  # must not raise
 
 
 # ---------------------------------------------------------------------------
