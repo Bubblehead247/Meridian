@@ -58,7 +58,7 @@ def _patch_session(monkeypatch, picks):
     monkeypatch.setattr(live_runner, "create_model", lambda family, model: _FakeModel())
 
 
-def test_run_paper_session_sizes_primary_and_flattens_monitor(monkeypatch):
+def test_run_paper_session_sizes_primary_and_flattens_monitor(monkeypatch, tmp_path):
     picks = {
         "trend_following": {"model": "ma_trend_long_only", "symbol": "XLK"},
         "breakouts":       {"model": "turtle_ma_exit",     "symbol": "TRGP"},  # monitor → 0%
@@ -67,7 +67,9 @@ def test_run_paper_session_sizes_primary_and_flattens_monitor(monkeypatch):
     _patch_session(monkeypatch, picks)
     broker = SimulatedBroker(cash=100_000.0, cost_bps=0.0)
 
-    decisions = live_runner.run_paper_session(broker, account_equity=100_000.0)
+    decisions = live_runner.run_paper_session(
+        broker, account_equity=100_000.0,
+        positions_path=tmp_path / "positions.json")
 
     by_family = {d.family: d for d in decisions}
     assert set(by_family) == set(picks)            # exactly one decision per pick
@@ -93,3 +95,115 @@ def test_run_paper_session_empty_picks_trades_nothing(monkeypatch):
     monkeypatch.setattr(live_runner, "load_live_picks", lambda: {})
     broker = SimulatedBroker(cash=100_000.0)
     assert live_runner.run_paper_session(broker) == []
+
+
+# --- per-sleeve position book (no cross-sleeve stomping) --------------------
+
+
+class _FlatModel:
+    """Single-asset model that always signals flat."""
+
+    cross_sectional = False
+
+    def signals(self, prices: pd.Series) -> pd.Series:
+        return pd.Series(0, index=prices.index)
+
+
+def test_sleeve_does_not_flatten_another_sleeves_holding(monkeypatch, tmp_path):
+    """A flat signal sells only what THIS sleeve holds — not account shares.
+
+    Regression: sector_rotation (SECTORS ⊇ XLK) used to sell trend_following's
+    XLK because deltas were taken against the account-level broker position.
+    """
+    import json
+    picks = {"sector_rotation": {"model": "rs", "symbol": "XLK"}}
+    _patch_session(monkeypatch, picks)
+    monkeypatch.setattr(live_runner, "create_model", lambda f, m: _FlatModel())
+
+    # Account holds 8.19 XLK — but it belongs to trend_following's book.
+    positions_path = tmp_path / "positions.json"
+    positions_path.write_text(json.dumps({"trend_following": {"XLK": 8.19}}))
+    broker = SimulatedBroker(cash=100_000.0, cost_bps=0.0)
+    broker.positions["XLK"] = 8.19
+
+    decisions = live_runner.run_paper_session(
+        broker, account_equity=100_000.0, positions_path=positions_path)
+
+    assert decisions[0].orders == []          # no sell of someone else's shares
+    assert broker.positions["XLK"] == 8.19    # holding untouched
+
+
+def test_sleeve_flattens_its_own_holding(monkeypatch, tmp_path):
+    import json
+    picks = {"sector_rotation": {"model": "rs", "symbol": "XLK"}}
+    _patch_session(monkeypatch, picks)
+    monkeypatch.setattr(live_runner, "create_model", lambda f, m: _FlatModel())
+
+    positions_path = tmp_path / "positions.json"
+    positions_path.write_text(json.dumps({"sector_rotation": {"XLK": 5.0}}))
+    broker = SimulatedBroker(cash=100_000.0, cost_bps=0.0)
+    broker.positions["XLK"] = 5.0
+
+    decisions = live_runner.run_paper_session(
+        broker, account_equity=100_000.0, positions_path=positions_path)
+
+    assert len(decisions[0].orders) == 1
+    assert decisions[0].orders[0].qty == -5.0
+    # Sleeve book is emptied after the sell.
+    assert json.loads(positions_path.read_text()).get("sector_rotation", {}) == {}
+
+
+def test_order_updates_sleeve_position_book(monkeypatch, tmp_path):
+    import json
+    picks = {"trend_following": {"model": "ma", "symbol": "XLK"}}
+    _patch_session(monkeypatch, picks)
+
+    positions_path = tmp_path / "positions.json"
+    broker = SimulatedBroker(cash=100_000.0, cost_bps=0.0)
+
+    live_runner.run_paper_session(
+        broker, account_equity=100_000.0, positions_path=positions_path)
+
+    book = json.loads(positions_path.read_text())
+    # 100k * 15% sleeve / $100 = 150 shares recorded to trend_following's book.
+    assert book["trend_following"]["XLK"] == 150.0
+
+
+# --- order rejection is non-fatal -------------------------------------------
+
+
+class _RejectingBroker(SimulatedBroker):
+    """Broker whose first market_order raises (like an Alpaca APIError)."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.attempts = 0
+
+    def market_order(self, symbol, qty):
+        self.attempts += 1
+        if self.attempts == 1:
+            raise RuntimeError("insufficient qty available for order")
+        return super().market_order(symbol, qty)
+
+
+def test_rejected_order_does_not_abort_session(monkeypatch, tmp_path):
+    import json
+    picks = {
+        "mean_reversion":  {"model": "z",  "symbol": "SNOW"},
+        "trend_following": {"model": "ma", "symbol": "XLK"},
+    }
+    _patch_session(monkeypatch, picks)
+    broker = _RejectingBroker(cash=100_000.0, cost_bps=0.0)
+    positions_path = tmp_path / "positions.json"
+
+    decisions = live_runner.run_paper_session(
+        broker, account_equity=100_000.0, positions_path=positions_path)
+
+    # Both families processed; first order raised, second went through.
+    assert len(decisions) == 2
+    assert broker.attempts == 2
+    all_fills = [f for d in decisions for f in d.orders]
+    assert len(all_fills) == 1
+    # The failed order must NOT be recorded in the position book.
+    book = json.loads(positions_path.read_text())
+    assert sum(len(v) for v in book.values()) == 1

@@ -14,12 +14,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 
 import pandas as pd
 
 from meridian.data import load_ohlcv
 from meridian.execution.broker import BaseBroker, Fill
 from meridian.execution.notify import notify_daily_status, notify_entry, notify_exit
+from meridian.execution.positions import POSITIONS_FILE, adjust_position, get_position
 from meridian.execution.reconcile import add_pending_order, record_fill
 from meridian.families import create_model
 from meridian.portfolio.allocation import FAMILY_TO_SLEEVE, SLEEVE_ALLOCATIONS
@@ -105,6 +107,7 @@ def run_paper_session(
     account_equity: float = 100_000.0,
     price_start: str = "2023-01-01",
     dry_run: bool = False,
+    positions_path: Path = POSITIONS_FILE,
 ) -> list[StrategyDecision]:
     """Run every curated live pick for today; return one StrategyDecision per family.
 
@@ -193,7 +196,10 @@ def run_paper_session(
             if series is not None and len(series) >= 2 and float(series.iloc[-2]) != 0:
                 day_changes[sym] = float(series.iloc[-1] / series.iloc[-2] - 1.0)
 
-        # --- reconcile with broker ---
+        # --- reconcile with this sleeve's own position book ---
+        # Deltas are taken against the per-sleeve virtual book, never the
+        # account-level broker position: universes overlap (SECTORS contains
+        # XLK), and a sleeve must not flatten another sleeve's holding.
         fills: list[Fill] = []
         if not dry_run:
             for sym, target in target_shares.items():
@@ -202,12 +208,18 @@ def run_paper_session(
                 price = float(prices[sym].iloc[-1])
                 if hasattr(broker, "set_price"):
                     broker.set_price(sym, price)
-                current = broker.get_position(sym)
+                current = get_position(family, sym, path=positions_path)
                 delta = target - current
                 if abs(delta) > 0.001:
-                    fill = broker.market_order(sym, delta)
+                    try:
+                        fill = broker.market_order(sym, delta)
+                    except Exception as exc:
+                        # One rejected order must not abort the session.
+                        print(f"  order failed: {family} {sym} {delta:+.4f} — {exc}")
+                        continue
                     if fill is not None:
                         fills.append(fill)
+                        adjust_position(family, sym, delta, path=positions_path)
                         # Real broker orders carry an order_id: log actual
                         # fills now, queue unfilled ones (e.g. placed after
                         # the close) for the morning reconcile. Simulated

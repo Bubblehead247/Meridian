@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from meridian.execution.notify import notify_fill
+from meridian.execution.positions import POSITIONS_FILE, adjust_position
 
 if TYPE_CHECKING:
     from meridian.execution.broker import AlpacaBroker, Fill
@@ -118,12 +119,15 @@ def reconcile_pending_orders(
     notify: bool = True,
     pending_path: Path = PENDING_ORDERS_FILE,
     log_path: Path = TRADE_LOG_FILE,
+    positions_path: Path = POSITIONS_FILE,
 ) -> list[dict]:
     """Price yesterday's pending orders against the broker's actual fills.
 
     For each pending order: if filled, append it to the trade log at the real
     fill price and (optionally) push an ntfy confirmation. Dead orders
-    (canceled/expired/rejected) are dropped. Orders still open stay pending.
+    (canceled/expired/rejected) are dropped and their submit-time update to
+    the sleeve position book is reverted, so the sleeve retries next session.
+    Orders still open stay pending.
 
     Returns the list of trade-log records written this run.
     """
@@ -151,7 +155,11 @@ def reconcile_pending_orders(
             if notify:
                 notify_fill(record)
         elif status in _DEAD_STATUSES:
-            pass  # will never fill — drop it
+            # Will never fill: drop it and undo its position-book update.
+            adjust_position(
+                order.get("family", "?"), order["symbol"], -float(order["qty"]),
+                path=positions_path,
+            )
         else:
             still_pending.append(order)  # new/accepted/unknown — keep waiting
 

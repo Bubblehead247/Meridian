@@ -104,19 +104,24 @@ def test_reconcile_records_filled_orders(tmp_path):
     assert load_pending_orders(pending_path) == []  # no longer pending
 
 
-def test_reconcile_drops_dead_orders(tmp_path):
+def test_reconcile_drops_dead_orders_and_reverts_position_book(tmp_path):
     pending_path = _pending(tmp_path, [
         {"order_id": "dead", "symbol": "SPY", "qty": 5.0,
          "family": "momentum", "model": "dm", "submitted": "2026-07-09"},
     ])
+    # The submit-time update credited momentum with the 5 shares.
+    positions_path = tmp_path / "positions.json"
+    positions_path.write_text(json.dumps({"momentum": {"SPY": 5.0}}))
     broker = _FakeBroker({"dead": ("canceled", 0.0)})
 
     records = reconcile_pending_orders(
-        broker, notify=False,
-        pending_path=pending_path, log_path=tmp_path / "trades.jsonl")
+        broker, notify=False, pending_path=pending_path,
+        log_path=tmp_path / "trades.jsonl", positions_path=positions_path)
 
     assert records == []
     assert load_pending_orders(pending_path) == []
+    # Position book reverted, so the sleeve retries next session.
+    assert json.loads(positions_path.read_text()) == {}
 
 
 def test_reconcile_keeps_unfilled_orders_pending(tmp_path):
@@ -152,7 +157,8 @@ def test_reconcile_mixed_batch(tmp_path):
     })
 
     records = reconcile_pending_orders(
-        broker, notify=False, pending_path=pending_path, log_path=log_path)
+        broker, notify=False, pending_path=pending_path, log_path=log_path,
+        positions_path=tmp_path / "positions.json")
 
     assert [r["symbol"] for r in records] == ["SPY"]
     assert [o["order_id"] for o in load_pending_orders(pending_path)] == ["c"]
