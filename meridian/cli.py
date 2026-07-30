@@ -347,8 +347,17 @@ def _cmd_review(args) -> int:
     return 0
 
 
+#: Lock name held for the duration of a live paper session. Guards every route
+#: into a session at once — the scheduler, the tray's "Run now", and a manual
+#: `meridian run-paper` — since any two of them running together sends every
+#: order twice.
+SESSION_LOCK = "Meridian-session"
+
+
 def _cmd_run_paper(args) -> int:
     """Compute today's signals for every paper-stage strategy and (optionally) send orders."""
+    from quantcore.single_instance import SingleInstance
+
     from meridian.execution.broker import AlpacaBroker, SimulatedBroker
     from meridian.execution.live_runner import print_session_report, run_paper_session
 
@@ -362,12 +371,23 @@ def _cmd_run_paper(args) -> int:
             print("Use --dry-run to preview signals without a broker connection.", file=sys.stderr)
             return 1
 
-    decisions = run_paper_session(
-        broker,
-        account_equity=args.equity,
-        price_start=args.start or "2023-01-01",
-        dry_run=args.dry_run,
-    )
+    # A dry run sends nothing, so it needs no lock and must not block a real one.
+    with SingleInstance(SESSION_LOCK) if not args.dry_run else _NullLock() as lock:
+        if not lock.acquired:
+            print(
+                "Another Meridian session is already running — refusing to place "
+                "a second set of orders.",
+                file=sys.stderr,
+            )
+            return 1
+
+        decisions = run_paper_session(
+            broker,
+            account_equity=args.equity,
+            price_start=args.start or "2023-01-01",
+            dry_run=args.dry_run,
+        )
+
     print_session_report(decisions)
 
     active = sum(1 for d in decisions if not d.skipped)
@@ -375,6 +395,18 @@ def _cmd_run_paper(args) -> int:
     verb = "previewed" if args.dry_run else "sent"
     print(f"Done: {active} strategies processed, {orders} orders {verb}.")
     return 0
+
+
+class _NullLock:
+    """Stands in for the session lock when nothing is being sent (dry runs)."""
+
+    acquired = True
+
+    def __enter__(self) -> "_NullLock":
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        return False
 
 
 def _cmd_reconcile(args) -> int:

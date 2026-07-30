@@ -26,9 +26,16 @@ from meridian.execution.reconcile import add_pending_order, record_fill
 from meridian.families import create_model
 from meridian.portfolio.allocation import FAMILY_TO_SLEEVE, SLEEVE_ALLOCATIONS
 from meridian.portfolio.live_picks import live_pick_weight, load_live_picks
+from meridian.portfolio.sleeve_ledgers import update_sleeve_ledgers
 
 # Crypto suffixes that Alpaca routes through its crypto endpoint (not equity)
 _CRYPTO_SUFFIXES = ("_USDT", "_USD")
+
+#: Alpaca's minimum order value in dollars. An order below this is rejected with
+#: "cost basis must be >= minimal amount of order 1", so there is no point
+#: sending one. Rebalance deltas smaller than this are held back and reoffered on
+#: later sessions, accumulating until they clear the floor.
+MIN_ORDER_NOTIONAL = 1.0
 
 # The 11 SPDR sector ETFs — what "SECTORS" expands to at execution time
 _SECTOR_UNIVERSE = [
@@ -75,11 +82,17 @@ def _expand_symbol(symbol_str: str) -> list[str]:
 
 
 def _fetch_prices(symbols: list[str], start: str = "2023-01-01") -> dict[str, pd.Series]:
-    """Load closing prices for each symbol from ``start`` to today."""
+    """Load closing prices for each symbol from ``start`` to today.
+
+    Bypasses the on-disk cache (``use_cache=False``): the live path must
+    always see today's bar, and must never read stale data left behind by a
+    previous session or write into the cache backtests rely on for
+    reproducibility.
+    """
     out = {}
     for sym in symbols:
         try:
-            out[sym] = load_ohlcv(sym, start)["close"]
+            out[sym] = load_ohlcv(sym, start, use_cache=False)["close"]
         except Exception:
             pass
     return out
@@ -210,6 +223,14 @@ def run_paper_session(
                     broker.set_price(sym, price)
                 current = get_position(family, sym, path=positions_path)
                 delta = target - current
+                # Gate on notional, not share count. A share-count band of 0.001
+                # is $0.05 of XLRE — two orders of magnitude below the broker's
+                # $1 minimum, so orders were submitted only to be rejected with
+                # "cost basis must be >= minimal amount of order 1". Skipping
+                # here leaves `current` untouched, so the delta simply carries
+                # into tomorrow and goes out once it is worth placing.
+                if abs(delta) * price < MIN_ORDER_NOTIONAL:
+                    continue
                 if abs(delta) > 0.001:
                     try:
                         fill = broker.market_order(sym, delta)
@@ -241,7 +262,26 @@ def run_paper_session(
         ))
 
     if not dry_run:
-        notify_daily_status(decisions)
+        # BaseBroker declares get_account_equity with a (None, None) default, so
+        # this needs no hasattr sniffing — but a live API call can still fail, and
+        # a missing balance line must never cost us the daily status message.
+        try:
+            equity, last_equity = broker.get_account_equity()
+        except Exception:
+            equity = last_equity = None
+        notify_daily_status(decisions, equity=equity, last_equity=last_equity)
+
+        # Persist per-sleeve accounting so sleeve performance is measurable
+        # without reconstructing it from the fill log by hand. Recomputed from
+        # that log every session, so it is safe to run twice.
+        try:
+            last_prices = {
+                sym: float(series.iloc[-1])
+                for sym, series in prices.items() if not series.empty
+            }
+            update_sleeve_ledgers(equity or account_equity, last_prices)
+        except Exception as exc:  # noqa: BLE001 - bookkeeping must not fail a session
+            print(f"  sleeve ledger update failed: {exc}")
 
     return decisions
 
