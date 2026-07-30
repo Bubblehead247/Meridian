@@ -12,6 +12,10 @@ license = { text = "Proprietary" }
 authors = [{ name = "Cody Lee", email = "codylee84@gmail.com" }]
 
 dependencies = [
+    # Shared helpers used by all the bots — single-instance lock, broker
+    # reconciliation. Local editable package, not on PyPI:
+    #   pip install -e ../quantcore
+    "quantcore>=0.1.0",
     # Data
     "yfinance>=0.2.40",
     "alpaca-py>=0.20",

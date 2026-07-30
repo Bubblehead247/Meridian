@@ -47,6 +47,15 @@ class BaseBroker(ABC):
     def market_order(self, symbol: str, qty: float) -> Fill | None:
         """Submit a signed market order; return the Fill (or None for qty≈0)."""
 
+    def get_account_equity(self) -> tuple[float | None, float | None]:
+        """Return ``(current equity, prior-close equity)``.
+
+        Not abstract: a broker that cannot report account value returns
+        ``(None, None)`` and callers simply omit the balance. Declared here so
+        callers can call it directly instead of sniffing for it with ``hasattr``.
+        """
+        return None, None
+
 
 class SimulatedBroker(BaseBroker):
     """Deterministic in-memory paper broker.
@@ -61,6 +70,7 @@ class SimulatedBroker(BaseBroker):
         self.positions: dict[str, float] = {}
         self.last_price: dict[str, float] = {}
         self.fills: list[Fill] = []
+        self._initial_cash = float(cash)
 
     def set_price(self, symbol: str, price: float) -> None:
         self.last_price[symbol] = float(price)
@@ -83,6 +93,14 @@ class SimulatedBroker(BaseBroker):
         """Mark-to-market account equity at the last seen prices."""
         mtm = sum(q * self.last_price.get(s, 0.0) for s, q in self.positions.items())
         return self.cash + mtm
+
+    def get_account_equity(self) -> tuple[float, float]:
+        """Return (current equity, starting equity).
+
+        The simulated broker has no real "prior trading day close" to compare
+        against, so the starting cash it was constructed with stands in.
+        """
+        return self.equity(), self._initial_cash
 
 
 class AlpacaBroker(BaseBroker):
@@ -159,3 +177,8 @@ class AlpacaBroker(BaseBroker):
             return status, price
         except Exception:
             return "unknown", 0.0
+
+    def get_account_equity(self) -> tuple[float, float]:  # pragma: no cover - needs live API
+        """Return (current equity, prior trading-day closing equity)."""
+        account = self._client.get_account()
+        return float(account.equity), float(account.last_equity)

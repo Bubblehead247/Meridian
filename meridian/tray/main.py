@@ -29,13 +29,22 @@ HERE         = Path(__file__).parent
 PROJECT_ROOT = HERE.parent.parent
 LOG_FILE     = PROJECT_ROOT / "meridian.log"
 
+from quantcore.single_instance import SingleInstance
+
+# Log to the file, and additionally to the console only when there is a real
+# console. When the tray launches this as a child it redirects stdout into
+# LOG_FILE, so an unconditional StreamHandler wrote every line twice — through
+# two independent, unsynchronized append handles on one file. That is the source
+# of the duplicated lines around 2026-07-14, separate from the genuine
+# double-scheduler run the lock below prevents.
+_handlers: list[logging.Handler] = [logging.FileHandler(LOG_FILE, encoding="utf-8")]
+if sys.stdout is not None and getattr(sys.stdout, "isatty", lambda: False)():
+    _handlers.append(logging.StreamHandler())
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-8s | %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
-        logging.StreamHandler(),
-    ],
+    handlers=_handlers,
 )
 logger = logging.getLogger("meridian.scheduler")
 
@@ -45,29 +54,21 @@ logger = logging.getLogger("meridian.scheduler")
 # ---------------------------------------------------------------------------
 
 def is_trading_day(dt: date) -> bool:
-    """True if ``dt`` is a US equities trading day per the Alpaca calendar.
+    """True if ``dt`` is a US equities trading day, per the Alpaca calendar.
 
-    Falls back to weekday-only when Alpaca credentials are absent or the
-    API is unreachable.
+    Delegates to the shared gate, which **fails closed**: if the calendar cannot
+    be established, the answer is "no" and the session is skipped.
+
+    This used to fall back to ``dt.weekday() < 5`` on any failure, so a bad key,
+    a missing key or an Alpaca outage silently turned every weekday into a
+    trading day — the bot would have run a session on Thanksgiving. Skipping a
+    day costs one day of signals; trading into a closed or misjudged market costs
+    money. The shared gate also caches the calendar, so a network blip falls back
+    to the cached answer rather than stopping trading.
     """
-    try:
-        from dotenv import load_dotenv
-        load_dotenv(PROJECT_ROOT / ".env")
+    from quantcore.market_calendar import trading_session
 
-        from alpaca.trading.client import TradingClient
-        from alpaca.trading.requests import GetCalendarRequest
-
-        client = TradingClient(
-            os.environ["ALPACA_API_KEY"],
-            os.environ["ALPACA_SECRET_KEY"],
-            paper=True,
-        )
-        cal = client.get_calendar(
-            GetCalendarRequest(start=dt.isoformat(), end=dt.isoformat())
-        )
-        return len(cal) > 0
-    except Exception:
-        return dt.weekday() < 5  # weekday fallback
+    return trading_session("meridian", dt, root=PROJECT_ROOT) is not None
 
 
 def _is_first_trading_day_of_month(today: date) -> bool:
@@ -159,29 +160,48 @@ RECON_HOUR   = 9
 RECON_MINUTE = 45
 
 
+#: Lock name. Any second scheduler process using this name refuses to start.
+SCHEDULER_LOCK = "Meridian-scheduler"
+
+
 def run() -> None:
-    """Block forever: reconcile at 9:45 ET, paper session at 16:30 ET, daily."""
-    logger.info(
-        "Meridian scheduler started (reconcile 9:45 ET, session 16:30 ET, trading days)."
-    )
-    last_run:   date | None = None
-    last_recon: date | None = None
+    """Block forever: reconcile at 9:45 ET, paper session at 16:30 ET, daily.
 
-    while True:
-        now_et = datetime.now(ET)
-        today  = now_et.date()
+    Holds a machine-wide lock for its whole life. ``last_run``/``last_recon``
+    below are ordinary local variables, so they only stop *this* process firing
+    twice — a second scheduler has its own copies and fires the same session
+    again. That is what happened on 2026-07-14: two ``run-paper: starting`` lines
+    77 ms apart, and every order placed twice.
+    """
+    with SingleInstance(SCHEDULER_LOCK) as lock:
+        if not lock.acquired:
+            logger.error(
+                "Another Meridian scheduler is already running — refusing to "
+                "start a second one. Stop the other process first."
+            )
+            return
 
-        past_recon_time = (now_et.hour, now_et.minute) >= (RECON_HOUR, RECON_MINUTE)
-        if past_recon_time and last_recon != today:
-            last_recon = today
-            run_reconcile()
+        logger.info(
+            "Meridian scheduler started (reconcile 9:45 ET, session 16:30 ET, trading days)."
+        )
+        last_run:   date | None = None
+        last_recon: date | None = None
 
-        past_fire_time = (now_et.hour, now_et.minute) >= (FIRE_HOUR, FIRE_MINUTE)
-        if past_fire_time and last_run != today:
-            last_run = today
-            fire()
+        while True:
+            now_et = datetime.now(ET)
+            today  = now_et.date()
 
-        time.sleep(30)
+            past_recon_time = (now_et.hour, now_et.minute) >= (RECON_HOUR, RECON_MINUTE)
+            if past_recon_time and last_recon != today:
+                last_recon = today
+                run_reconcile()
+
+            past_fire_time = (now_et.hour, now_et.minute) >= (FIRE_HOUR, FIRE_MINUTE)
+            if past_fire_time and last_run != today:
+                last_run = today
+                fire()
+
+            time.sleep(30)
 
 
 if __name__ == "__main__":

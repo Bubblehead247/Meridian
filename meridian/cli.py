@@ -347,8 +347,47 @@ def _cmd_review(args) -> int:
     return 0
 
 
+#: Lock name held for the duration of a live paper session. Guards every route
+#: into a session at once — the scheduler, the tray's "Run now", and a manual
+#: `meridian run-paper` — since any two of them running together sends every
+#: order twice.
+SESSION_LOCK = "Meridian-session"
+
+
 def _cmd_run_paper(args) -> int:
     """Compute today's signals for every paper-stage strategy and (optionally) send orders."""
+    # A dry run is a local preview: no calendar gate, no lock, no alerting.
+    if not args.dry_run:
+        return _as_scheduled_job("session", lambda: _run_paper(args))
+    return _run_paper(args)
+
+
+def _as_scheduled_job(name: str, work) -> int:
+    """Run ``work`` through the shared scheduled-job harness.
+
+    Gives a task-scheduler run the same guards every other bot's jobs get: one at
+    a time, a trading-day gate that fails closed, a staleness check, and an alert
+    on failure. Meridian previously had no calendar gate on the CLI at all — the
+    check lived only in the tray's loop — so a task firing on a holiday would have
+    run a full session.
+    """
+    from quantcore.bot_schedule import for_bot
+    from quantcore.jobs import JobSpec, run_job
+
+    spec = next((j for j in for_bot("meridian") if j.name == name), None)
+    if spec is None:  # pragma: no cover - defensive
+        return work()
+    return run_job(
+        JobSpec(bot=spec.bot, name=spec.name, scheduled=spec.at,
+                max_lateness=spec.max_lateness,
+                needs_trading_day=spec.needs_trading_day),
+        work,
+    )
+
+
+def _run_paper(args) -> int:
+    from quantcore.single_instance import SingleInstance
+
     from meridian.execution.broker import AlpacaBroker, SimulatedBroker
     from meridian.execution.live_runner import print_session_report, run_paper_session
 
@@ -362,12 +401,23 @@ def _cmd_run_paper(args) -> int:
             print("Use --dry-run to preview signals without a broker connection.", file=sys.stderr)
             return 1
 
-    decisions = run_paper_session(
-        broker,
-        account_equity=args.equity,
-        price_start=args.start or "2023-01-01",
-        dry_run=args.dry_run,
-    )
+    # A dry run sends nothing, so it needs no lock and must not block a real one.
+    with SingleInstance(SESSION_LOCK) if not args.dry_run else _NullLock() as lock:
+        if not lock.acquired:
+            print(
+                "Another Meridian session is already running — refusing to place "
+                "a second set of orders.",
+                file=sys.stderr,
+            )
+            return 1
+
+        decisions = run_paper_session(
+            broker,
+            account_equity=args.equity,
+            price_start=args.start or "2023-01-01",
+            dry_run=args.dry_run,
+        )
+
     print_session_report(decisions)
 
     active = sum(1 for d in decisions if not d.skipped)
@@ -377,8 +427,24 @@ def _cmd_run_paper(args) -> int:
     return 0
 
 
+class _NullLock:
+    """Stands in for the session lock when nothing is being sent (dry runs)."""
+
+    acquired = True
+
+    def __enter__(self) -> "_NullLock":
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        return False
+
+
 def _cmd_reconcile(args) -> int:
     """Price yesterday's pending orders against actual Alpaca fills."""
+    return _as_scheduled_job("reconcile", lambda: _run_reconcile(args))
+
+
+def _run_reconcile(args) -> int:
     from meridian.execution.broker import AlpacaBroker
     from meridian.execution.reconcile import load_pending_orders, reconcile_pending_orders
 

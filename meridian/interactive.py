@@ -340,11 +340,19 @@ def _fmt(val, fmt=".2f", pct=False) -> str:
     return f"{val:{fmt}}" if not pct else f"{val:.1%}"
 
 
-_ALL_FAMILIES = [
-    "long_term_etf", "momentum", "trend_following", "mean_reversion",
-    "pullback_continuation", "sector_rotation", "event_driven", "volatility",
-    "experimental_research",
-]
+# Families that actually have registered models, worked out from the registry
+# instead of hardcoded. The old hardcoded list was wrong three ways: it omitted
+# `breakouts` (7 models and a live pick, so it never showed in the chart at all),
+# it included `event_driven` (a stub with no models), and it included
+# `experimental_research`, which is a funding sleeve rather than a family.
+def _active_families() -> list[str]:
+    from meridian.families.registry import list_families
+
+    return list_families()
+
+
+#: Stub families, listed separately so the count stays honest.
+_DEFERRED_FAMILIES = ["event_driven"]
 
 _STAGE_RANK = {
     "research": 0, "backtest": 1, "walk_forward": 2, "oos": 3,
@@ -383,7 +391,7 @@ def _family_chart(records: list, print_fn) -> None:
     print_fn("  " + "─" * (len(header) - 2))
     print_fn(header)
     print_fn("  " + "─" * (len(header) - 2))
-    for fam in _ALL_FAMILIES:
+    for fam in _active_families():
         if fam in best:
             rank, sharpe, stage, model, sym = best[fam]
             bar = "".join(_STAGE_BAR.get(s, "·") if _STAGE_RANK[s] <= rank else "·" for s in stages)
@@ -391,6 +399,10 @@ def _family_chart(records: list, print_fn) -> None:
         else:
             stage, model, sym, bar, sh = "—", "—", "—", "·" * len(stages), "—"
         print_fn(f"  {fam:<22}  {stage:<13}  {model:<30}  {sym:<5}  {sh:>6}  {bar}")
+    # Stubs are shown, but labelled, so the count cannot be misread as live.
+    for fam in _DEFERRED_FAMILIES:
+        print_fn(f"  {fam:<22}  {'deferred':<13}  {'— no models registered —':<30}  "
+                 f"{'—':<5}  {'—':>6}  {'·' * len(stages)}")
     print_fn("  " + "─" * (len(header) - 2))
     print_fn("  progress key: · none  ▒ backtest  ▓ walk-fwd  █ oos/live")
     print_fn("")

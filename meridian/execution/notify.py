@@ -113,8 +113,19 @@ def notify_fill(record: dict) -> None:
     _send(title, body, priority="high", tags="white_check_mark,moneybag")
 
 
-def notify_daily_status(decisions: list["StrategyDecision"]) -> None:
-    """Send one daily message: each held ticker and its 1-day % move."""
+def notify_daily_status(
+    decisions: list["StrategyDecision"],
+    *,
+    equity: float | None = None,
+    last_equity: float | None = None,
+) -> None:
+    """Send one daily message: account balance, its % change, and each held ticker.
+
+    ``equity`` and ``last_equity`` are the broker's current and prior-close
+    account values (see ``BaseBroker.get_account_equity``). Either may be
+    None (e.g. broker doesn't support the lookup), in which case the balance
+    line is simply omitted.
+    """
     held: dict[str, float] = {}  # symbol → day change (NaN when unknown)
     for d in decisions:
         if d.skipped or d.weight <= 0:
@@ -124,6 +135,13 @@ def notify_daily_status(decisions: list["StrategyDecision"]) -> None:
                 held[sym] = d.day_changes.get(sym, float("nan"))
 
     lines: list[str] = [f"Meridian Daily Status — {date.today()}", ""]
+    if equity is not None:
+        if last_equity is not None and last_equity > 0:
+            pct = equity / last_equity - 1.0
+            lines.append(f"Balance: ${equity:,.2f}  ({pct:+.2%})")
+        else:
+            lines.append(f"Balance: ${equity:,.2f}")
+        lines.append("")
     if held:
         for sym in sorted(held):
             chg = held[sym]
