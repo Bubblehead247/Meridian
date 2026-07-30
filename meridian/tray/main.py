@@ -54,29 +54,21 @@ logger = logging.getLogger("meridian.scheduler")
 # ---------------------------------------------------------------------------
 
 def is_trading_day(dt: date) -> bool:
-    """True if ``dt`` is a US equities trading day per the Alpaca calendar.
+    """True if ``dt`` is a US equities trading day, per the Alpaca calendar.
 
-    Falls back to weekday-only when Alpaca credentials are absent or the
-    API is unreachable.
+    Delegates to the shared gate, which **fails closed**: if the calendar cannot
+    be established, the answer is "no" and the session is skipped.
+
+    This used to fall back to ``dt.weekday() < 5`` on any failure, so a bad key,
+    a missing key or an Alpaca outage silently turned every weekday into a
+    trading day — the bot would have run a session on Thanksgiving. Skipping a
+    day costs one day of signals; trading into a closed or misjudged market costs
+    money. The shared gate also caches the calendar, so a network blip falls back
+    to the cached answer rather than stopping trading.
     """
-    try:
-        from dotenv import load_dotenv
-        load_dotenv(PROJECT_ROOT / ".env")
+    from quantcore.market_calendar import trading_session
 
-        from alpaca.trading.client import TradingClient
-        from alpaca.trading.requests import GetCalendarRequest
-
-        client = TradingClient(
-            os.environ["ALPACA_API_KEY"],
-            os.environ["ALPACA_SECRET_KEY"],
-            paper=True,
-        )
-        cal = client.get_calendar(
-            GetCalendarRequest(start=dt.isoformat(), end=dt.isoformat())
-        )
-        return len(cal) > 0
-    except Exception:
-        return dt.weekday() < 5  # weekday fallback
+    return trading_session("meridian", dt, root=PROJECT_ROOT) is not None
 
 
 def _is_first_trading_day_of_month(today: date) -> bool:
