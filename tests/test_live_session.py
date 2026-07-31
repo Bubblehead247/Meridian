@@ -207,3 +207,59 @@ def test_rejected_order_does_not_abort_session(monkeypatch, tmp_path):
     # The failed order must NOT be recorded in the position book.
     book = json.loads(positions_path.read_text())
     assert sum(len(v) for v in book.values()) == 1
+
+
+# --- D4: rebalance band (XLK churn) -----------------------------------------
+
+
+class _BandBroker(SimulatedBroker):
+    """Records every order so a test can assert what was actually sent."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.sent: list[tuple[str, float]] = []
+
+    def market_order(self, symbol, shares, **kwargs):
+        self.sent.append((symbol, shares))
+        return super().market_order(symbol, shares, **kwargs)
+
+
+def _run_with_holding(monkeypatch, tmp_path, held: float, equity: float):
+    """Run one session for a single family already holding `held` shares."""
+    from meridian.execution.positions import adjust_position
+
+    picks = {"trend_following": {"model": "ma_trend_long_only", "symbol": "XLK"}}
+    _patch_session(monkeypatch, picks)
+    positions = tmp_path / "positions.json"
+    if held:
+        adjust_position("trend_following", "XLK", held, path=positions)
+
+    broker = _BandBroker(cash=equity, cost_bps=0.0)
+    live_runner.run_paper_session(
+        broker, account_equity=equity, positions_path=positions)
+    return broker.sent
+
+
+def test_a_small_drift_inside_the_band_sends_no_order(monkeypatch, tmp_path):
+    """XLK ratcheted 8.43 → 9.005 shares over six sessions of drift like this."""
+    # Sleeve target is 100_000 * 0.15 / $100 = 150 shares. Holding 148 leaves a
+    # 2-share delta = 1.3% of target, well inside the 5% band.
+    sent = _run_with_holding(monkeypatch, tmp_path, held=148.0, equity=100_000.0)
+
+    assert sent == []
+
+
+def test_a_drift_outside_the_band_still_trades(monkeypatch, tmp_path):
+    """The band suppresses noise, not real divergence."""
+    # Holding 100 against a 150 target is a 50-share delta = 33% of target.
+    sent = _run_with_holding(monkeypatch, tmp_path, held=100.0, equity=100_000.0)
+
+    assert [s for s, _ in sent] == ["XLK"]
+    assert sent[0][1] == 50.0
+
+
+def test_opening_a_position_ignores_the_band(monkeypatch, tmp_path):
+    """current == 0 is a decision to enter, not drift."""
+    sent = _run_with_holding(monkeypatch, tmp_path, held=0.0, equity=100_000.0)
+
+    assert [s for s, _ in sent] == ["XLK"]

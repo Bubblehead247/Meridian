@@ -37,6 +37,19 @@ _CRYPTO_SUFFIXES = ("_USDT", "_USD")
 #: later sessions, accumulating until they clear the floor.
 MIN_ORDER_NOTIONAL = 1.0
 
+#: Rebalance band. An adjustment to a position already held is skipped unless it
+#: moves at least this fraction of the position's target value.
+#:
+#: Why: XLK was bought on six consecutive sessions, ratcheting 8.43 → 9.005
+#: shares while the price fell, because the target moves a little every day and
+#: any difference at all produced an order. The drift is noise, the commission
+#: and spread are not.
+#:
+#: This gates **adjustments only**. Opening a position and closing one are
+#: decisions, not drift, so they always go through however small they are —
+#: otherwise a signal to exit could be silently swallowed.
+REBALANCE_BAND_PCT = 0.05
+
 # The 11 SPDR sector ETFs — what "SECTORS" expands to at execution time
 _SECTOR_UNIVERSE = [
     "XLC", "XLY", "XLP", "XLE", "XLF",
@@ -231,6 +244,13 @@ def run_paper_session(
                 # into tomorrow and goes out once it is worth placing.
                 if abs(delta) * price < MIN_ORDER_NOTIONAL:
                     continue
+                # Rebalance band: only for a position being adjusted. Opening
+                # (current == 0) and closing (target == 0) always go through.
+                if current != 0.0 and target != 0.0:
+                    if abs(delta) < REBALANCE_BAND_PCT * abs(target):
+                        print(f"  hold: {family} {sym} {delta:+.4f} sh is inside "
+                              f"the {REBALANCE_BAND_PCT:.0%} rebalance band")
+                        continue
                 if abs(delta) > 0.001:
                     try:
                         fill = broker.market_order(sym, delta)
