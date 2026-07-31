@@ -4,7 +4,7 @@
 
 Meridian is an institutional-grade quantitative research platform for testing, validating, and ranking mean-reversion strategies across multiple definitions of "fair value." The core research question is: which estimator of fair value produces the most robust, exploitable mean-reversion signal?
 
-This is not a single-strategy backtest. It is a comparative research framework testing 37+ estimators through a shared, controlled pipeline.
+This is not a single-strategy backtest. It is a comparative research framework testing 42 estimators through a shared, controlled pipeline.
 
 ---
 
@@ -77,7 +77,7 @@ Regime logic lives in `regimes/` and is applied downstream.
 - **No estimator-specific optimization.** Signal logic is held constant across all estimators. Only the estimator varies.
 - **Reproducibility first.** Every experiment must be fully reproducible from config alone.
 - **Out-of-sample discipline.** In-sample: 2010–2019. OOS: 2020–2022. Walk-forward: 2023–present.
-- **Multiple testing awareness.** 37+ estimators on shared data is a significant multiple comparison problem. All rankings must apply corrections (Bonferroni or BH).
+- **Multiple testing awareness.** 42 estimators on shared data is a significant multiple comparison problem. All rankings must apply corrections (Bonferroni or BH).
 - **Survivorship bias acknowledged.** yfinance is survivorship-biased. Document this limitation in every report. Do not overstate robustness.
 
 ---
@@ -97,7 +97,7 @@ Universes in scope: S&P 500, Nasdaq-100, Russell 1000, SPY, QQQ, IWM
 |-------|-------------|
 | 0 | Project infrastructure, experiment tracking, CI |
 | 1 | Data engineering, universe management, caching |
-| 2 | Estimator library (37+ estimators, unit tested) |
+| 2 | Estimator library (42 estimators, unit tested) |
 | 3 | Deviation metrics module |
 | 4 | Signal engine, backtester |
 | 5 | Regime classifiers |
@@ -140,7 +140,7 @@ Each Claude Code session must:
 
 ## Expanded Mandate
 
-Meridian is the research-and-development platform for a diversified rules-based retail quant fund, operating as part of the **Fable 5 trading system**. The original mean-reversion estimator research remains the foundation. On top of it, Meridian now hosts nine strategy families, a graduation pipeline, a virtual ledger, a risk budget engine, and a monthly review process — everything needed to run a systematic multi-strategy fund from idea to live capital.
+Meridian is the research-and-development platform for a diversified rules-based retail quant fund, operating as part of the **Fable 5 trading system**. The original mean-reversion estimator research remains the foundation. On top of it, Meridian now hosts eight active strategy families (a ninth, event_driven, is registered as deferred and trades nothing), a graduation pipeline, a virtual ledger, a risk budget engine, and a monthly review process — everything needed to run a systematic multi-strategy fund from idea to live capital.
 
 ---
 
@@ -149,7 +149,7 @@ Meridian is the research-and-development platform for a diversified rules-based 
 | Module | Responsibility |
 |---|---|
 | `data/` | OHLCV ingestion, caching, universe management |
-| `estimators/` | 38 fair-value estimators + registry |
+| `estimators/` | 42 fair-value estimators + registry |
 | `deviations/` | Deviation metrics (z-score, ATR-norm, etc.) |
 | `signals/` | Entry/exit signal logic and backtester |
 | `regimes/` | Market regime classifiers; `labeler.py` owns daily 3-dim index-level labels |

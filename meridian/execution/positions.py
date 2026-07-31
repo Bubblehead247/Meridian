@@ -32,8 +32,13 @@ def load_positions(path: Path = POSITIONS_FILE) -> dict[str, dict[str, float]]:
 def save_positions(
     positions: dict[str, dict[str, float]], path: Path = POSITIONS_FILE
 ) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(positions, indent=2), encoding="utf-8")
+    # Atomic: a plain write truncates the file before filling it, and this is the
+    # per-sleeve book every rebalance delta is measured against. A truncated one
+    # reads as "every sleeve is flat" and the next session would buy the entire
+    # book again. See ``quantcore.statefile``.
+    from quantcore.statefile import write_json_atomic
+
+    write_json_atomic(path, positions)
 
 
 def get_position(
