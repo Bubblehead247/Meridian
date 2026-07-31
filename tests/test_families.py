@@ -44,14 +44,28 @@ def test_unknown_model_raises():
 
 
 def test_duplicate_registration_raises():
-    @register_model("testfam", "dup")
-    class _A(EstimatorModel):
-        pass
+    """Registers into the global registry, so it must clean up after itself.
 
-    with pytest.raises(ValueError, match="already registered"):
+    It did not, and left a permanent ``testfam/dup`` entry behind: every later
+    test in the same run saw 9 families and 53 models instead of 8 and 52. That
+    was invisible until something counted them — the W9 doc-drift tests, which
+    passed alone and failed in the full suite.
+    """
+    from meridian.families import registry
+
+    before = dict(registry._REGISTRY)
+    try:
         @register_model("testfam", "dup")
-        class _B(EstimatorModel):
+        class _A(EstimatorModel):
             pass
+
+        with pytest.raises(ValueError, match="already registered"):
+            @register_model("testfam", "dup")
+            class _B(EstimatorModel):
+                pass
+    finally:
+        registry._REGISTRY.clear()
+        registry._REGISTRY.update(before)
 
 
 # --- model behaviour ------------------------------------------------------

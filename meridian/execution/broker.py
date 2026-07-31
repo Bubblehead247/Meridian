@@ -56,6 +56,14 @@ class BaseBroker(ABC):
         """
         return None, None
 
+    def cancel_order(self, order_id: str) -> bool:
+        """Cancel a resting order. ``False`` when the broker cannot or did not.
+
+        Not abstract, so a broker with no concept of resting orders (the
+        simulated one fills instantly) simply reports that it cancelled nothing.
+        """
+        return False
+
 
 class SimulatedBroker(BaseBroker):
     """Deterministic in-memory paper broker.
@@ -177,6 +185,19 @@ class AlpacaBroker(BaseBroker):
             return status, price
         except Exception:
             return "unknown", 0.0
+
+    def cancel_order(self, order_id: str) -> bool:  # pragma: no cover - needs live API
+        """Cancel a resting order; ``False`` if the broker refused or errored.
+
+        An order already filled or dead cannot be cancelled, and Alpaca raises
+        rather than returning quietly — which is the correct outcome here, since
+        the caller then leaves the order alone.
+        """
+        try:
+            self._client.cancel_order_by_id(order_id)
+            return True
+        except Exception:
+            return False
 
     def get_account_equity(self) -> tuple[float, float]:  # pragma: no cover - needs live API
         """Return (current equity, prior trading-day closing equity)."""

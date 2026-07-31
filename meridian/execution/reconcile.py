@@ -15,6 +15,7 @@ The scheduler fires ``meridian reconcile`` at 9:45 ET on trading days.
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -30,6 +31,15 @@ TRADE_LOG_FILE = Path("ledger") / "trade_log.jsonl"
 
 #: Alpaca order states that will never fill — drop these from the pending list.
 _DEAD_STATUSES = ("canceled", "expired", "rejected", "done_for_day")
+
+#: How many days a pending order may rest before it is treated as stuck.
+#:
+#: Meridian submits market orders after the close, so one fills at the next open
+#: or not at all. Three days spans a normal weekend without touching an order
+#: that is simply waiting for Monday.
+PENDING_MAX_AGE_DAYS = 3
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -160,8 +170,48 @@ def reconcile_pending_orders(
                 order.get("family", "?"), order["symbol"], -float(order["qty"]),
                 path=positions_path,
             )
+        elif _is_stale(order):
+            # Aged out. Meridian sends market orders after the close, so one
+            # fills at the next open or not at all — anything still resting days
+            # later is stuck, and nothing ever removed it. It stayed in
+            # pending_orders.json forever, and its submit-time position update
+            # stayed with it, quietly distorting the settled book against which
+            # every future rebalance delta is measured.
+            #
+            # Cancel first, then treat it as dead. Dropping it locally while it
+            # still rests at the broker is the worst of both: the sleeve retries
+            # and the stuck order could fill later, leaving the book doubled.
+            cancelled = broker.cancel_order(order["order_id"])
+            if not cancelled:
+                # It could not be cancelled — it may have just filled. Leave it
+                # for the next run rather than guessing.
+                logger.warning(
+                    f"pending order {order['order_id'][:8]} ({order['symbol']}) is "
+                    f"stale but could not be cancelled; leaving it pending.")
+                still_pending.append(order)
+                continue
+            logger.warning(
+                f"pending order {order['order_id'][:8]} ({order['symbol']}, "
+                f"submitted {order.get('submitted')}) was stale and has been "
+                f"cancelled; the sleeve will retry.")
+            adjust_position(
+                order.get("family", "?"), order["symbol"], -float(order["qty"]),
+                path=positions_path,
+            )
         else:
             still_pending.append(order)  # new/accepted/unknown — keep waiting
 
     save_pending_orders(still_pending, pending_path)
     return filled_records
+
+
+def _is_stale(order: dict, today: date | None = None) -> bool:
+    """True when a pending order has been resting too long to still be waited on."""
+    submitted = order.get("submitted")
+    if not submitted:
+        return False  # no date to judge by; leave it alone
+    try:
+        submitted_on = date.fromisoformat(str(submitted)[:10])
+    except ValueError:
+        return False
+    return ((today or date.today()) - submitted_on).days > PENDING_MAX_AGE_DAYS

@@ -462,3 +462,48 @@ def test_the_project_env_beats_an_ambient_variable(monkeypatch):
 
     source = Path(__file__).resolve().parents[1] / "meridian" / "cli.py"
     assert "load_dotenv(override=True)" in source.read_text(encoding="utf-8")
+
+
+# --- W9: the docs must agree with the registry ------------------------------
+
+
+def _doc(name: str) -> str:
+    from pathlib import Path
+
+    return (Path(__file__).resolve().parents[1] / name).read_text(encoding="utf-8")
+
+
+def test_the_docs_do_not_claim_nine_active_families():
+    """CLAUDE.md and PLAN.md said "nine strategy families"; there are eight.
+
+    event_driven is registered as deferred and trades nothing, which the code has
+    said explicitly since the 2026-07-28 review. The docs said otherwise until
+    2026-07-31.
+    """
+    from meridian.families.registry import list_families
+
+    assert len(list_families()) == 8
+    for name in ("CLAUDE.md", "PLAN.md", "README.md"):
+        try:
+            text = _doc(name)
+        except FileNotFoundError:
+            continue
+        assert "nine strategy families" not in text, f"{name} is out of date"
+
+
+def test_the_documented_model_count_matches_the_registry():
+    """README described "the 19 family/model names"; there are 52."""
+    from meridian.families.registry import list_families, list_models
+
+    total = sum(len(list_models(f)) for f in list_families())
+    assert f"the {total} family/model names" in _doc("README.md"), (
+        f"README does not name the real model count ({total})")
+
+
+def test_the_documented_estimator_count_matches_the_registry():
+    from meridian.estimators import list_estimators
+
+    count = len(list_estimators())
+    text = _doc("CLAUDE.md")
+    assert f"{count} fair-value estimators" in text
+    assert f"{count} estimators" in text
