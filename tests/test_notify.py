@@ -13,7 +13,7 @@ import pytest
 
 from meridian.execution.broker import Fill
 from meridian.execution.notify import (
-    _NTFY_URL,
+    _ntfy_url,
     notify_daily_status,
     notify_entry,
     notify_exit,
@@ -97,7 +97,7 @@ def test_notify_entry_posts_to_correct_url():
     with patch("urllib.request.urlopen", fake_open):
         notify_entry(fill, "mean_reversion", "zscore_21")
     assert len(calls) == 1
-    assert calls[0]["url"] == _NTFY_URL
+    assert calls[0]["url"] == _ntfy_url()
 
 
 def test_notify_entry_title_contains_symbol():
@@ -162,7 +162,7 @@ def test_notify_exit_posts_to_correct_url():
     with patch("urllib.request.urlopen", fake_open):
         notify_exit(fill, "mean_reversion", "zscore_21")
     assert len(calls) == 1
-    assert calls[0]["url"] == _NTFY_URL
+    assert calls[0]["url"] == _ntfy_url()
 
 
 def test_notify_exit_title_contains_symbol():

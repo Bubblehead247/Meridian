@@ -353,6 +353,10 @@ def _cmd_review(args) -> int:
 #: order twice.
 SESSION_LOCK = "Meridian-session"
 
+#: Used only when the account value cannot be read (dry runs, or a broker that
+#: does not report equity). A live session sizes off the real account instead.
+DEFAULT_EQUITY = 10_000.0
+
 
 def _cmd_run_paper(args) -> int:
     """Compute today's signals for every paper-stage strategy and (optionally) send orders."""
@@ -391,8 +395,10 @@ def _run_paper(args) -> int:
     from meridian.execution.broker import AlpacaBroker, SimulatedBroker
     from meridian.execution.live_runner import print_session_report, run_paper_session
 
+    equity = args.equity if args.equity is not None else DEFAULT_EQUITY
+
     if args.dry_run:
-        broker = SimulatedBroker(cash=args.equity)
+        broker = SimulatedBroker(cash=equity)
     else:
         try:
             broker = AlpacaBroker(paper=not args.live)
@@ -400,6 +406,19 @@ def _run_paper(args) -> int:
             print(f"Broker init failed: {exc}", file=sys.stderr)
             print("Use --dry-run to preview signals without a broker connection.", file=sys.stderr)
             return 1
+
+        # Size off what the account actually holds. The old default sized every
+        # sleeve against a flat $10,000 while the account held ~$9,730, and the
+        # gap widened with every day of P&L. An explicit --equity still wins, so
+        # a deliberate notional run is still possible.
+        if args.equity is None:
+            live_equity, _prior = broker.get_account_equity()
+            if live_equity:
+                equity = live_equity
+                print(f"Sizing off live account equity: ${equity:,.2f}")
+            else:
+                print(f"Broker reported no equity; sizing off ${equity:,.2f}.",
+                      file=sys.stderr)
 
     # A dry run sends nothing, so it needs no lock and must not block a real one.
     with SingleInstance(SESSION_LOCK) if not args.dry_run else _NullLock() as lock:
@@ -413,7 +432,7 @@ def _run_paper(args) -> int:
 
         decisions = run_paper_session(
             broker,
-            account_equity=args.equity,
+            account_equity=equity,
             price_start=args.start or "2023-01-01",
             dry_run=args.dry_run,
         )
@@ -572,8 +591,9 @@ def build_parser() -> argparse.ArgumentParser:
     rp = sub.add_parser(
         "run-paper", help="Compute today's signals for all paper-stage strategies and send orders"
     )
-    rp.add_argument("--equity", type=float, default=10_000.0,
-                    help="Total account equity for position sizing")
+    rp.add_argument("--equity", type=float, default=None,
+                    help="Total account equity for position sizing "
+                         "(default: read the live account; falls back to 10000)")
     rp.add_argument("--start", default=None,
                     help="Earliest date to fetch for indicator warmup (default: 2023-01-01)")
     rp.add_argument("--dry-run", action="store_true", dest="dry_run",
@@ -609,7 +629,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         from dotenv import load_dotenv
-        load_dotenv()
+        # override=True makes this project's .env authoritative. Without it a
+        # variable already set in the OS environment silently shadows the
+        # project's own value — this machine has a user-level NTFY_TOPIC from an
+        # unrelated project, which sent Meridian's alerts to the wrong topic.
+        load_dotenv(override=True)
     except ImportError:
         pass  # python-dotenv optional; env vars can still be set manually
 

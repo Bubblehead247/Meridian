@@ -89,7 +89,14 @@ def test_the_skipped_delta_is_retried_once_it_is_worth_placing(monkeypatch, tmp_
     """The delta must stay in the target, not be dropped.
 
     Skipping leaves the position book untouched, so the shortfall carries into
-    the next session and goes out as soon as it clears $1.
+    the next session and goes out as soon as it is worth placing.
+
+    Updated for the D4 rebalance band (2026-07-30): "worth placing" used to mean
+    just clearing Alpaca's $1 minimum. It now also has to clear
+    ``REBALANCE_BAND_PCT`` of the target, so a shortfall of 0.5 shares against a
+    21.7-share target — 2.3%, about $23 — is deliberately left alone now. That is
+    the churn the band exists to stop. The carry-over behaviour this test guards
+    is unchanged: the book is never quietly adjusted for an order not sent.
     """
     picks = {"sector_rotation": {"model": "relative_strength_b05", "symbol": "XLRE"}}
     _patch_session(monkeypatch, picks, price=46.02)
@@ -106,13 +113,20 @@ def test_the_skipped_delta_is_retried_once_it_is_worth_placing(monkeypatch, tmp_
     assert unchanged == pytest.approx(target - 0.0059), (
         "the skipped delta was silently absorbed into the book")
 
-    # Session 2: the same target against a larger shortfall — now worth placing.
+    # Session 2: a shortfall of 0.5 shares clears $1 but sits inside the band.
     broker = _RecordingBroker(cash=10_000.0, cost_bps=0.0)
     positions.write_text(json.dumps({"sector_rotation": {"XLRE": target - 0.5}}))
     live_runner.run_paper_session(
         broker, account_equity=10_000.0, positions_path=positions)
-    assert len(broker.orders) == 1, "a $23 order should have been placed"
-    assert broker.orders[0][1] == pytest.approx(0.5, abs=1e-6)
+    assert broker.orders == [], "2.3% of the target is inside the rebalance band"
+
+    # Session 3: 3 shares short — 13.8% of the target, outside the band.
+    broker = _RecordingBroker(cash=10_000.0, cost_bps=0.0)
+    positions.write_text(json.dumps({"sector_rotation": {"XLRE": target - 3.0}}))
+    live_runner.run_paper_session(
+        broker, account_equity=10_000.0, positions_path=positions)
+    assert len(broker.orders) == 1, "a real divergence should have been placed"
+    assert broker.orders[0][1] == pytest.approx(3.0, abs=1e-6)
 
 
 def test_an_order_comfortably_over_the_minimum_still_goes_through(monkeypatch, tmp_path):
@@ -332,3 +346,117 @@ def test_the_family_status_list_includes_breakouts():
     assert "event_driven" not in families
     assert "experimental_research" not in families, (
         "experimental_research is a funding sleeve, not a strategy family")
+
+
+# --- D3: sleeves are sized off the real account, not a hardcoded $10,000 -----
+
+
+def _fake_args(**kwargs):
+    from argparse import Namespace
+
+    base = dict(equity=None, dry_run=False, live=False, start=None)
+    base.update(kwargs)
+    return Namespace(**base)
+
+
+class _EquityBroker:
+    """Stands in for AlpacaBroker, reporting an account that is not $10,000."""
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def get_account_equity(self):
+        return 9_853.25, 9_779.89
+
+
+def _capture_equity(monkeypatch):
+    """Run _run_paper with the broker and session stubbed; return the equity used."""
+    from meridian import cli
+    from meridian.execution import broker as broker_mod
+    from meridian.execution import live_runner
+
+    seen = {}
+
+    def fake_session(broker, account_equity=None, **kwargs):
+        seen["equity"] = account_equity
+        return []
+
+    monkeypatch.setattr(broker_mod, "AlpacaBroker", _EquityBroker)
+    monkeypatch.setattr(live_runner, "run_paper_session", fake_session)
+    monkeypatch.setattr(live_runner, "print_session_report", lambda *a, **k: None)
+    return cli, seen
+
+
+def test_run_paper_sizes_off_live_account_equity(monkeypatch):
+    """The old default sized every sleeve against $10,000 while the account held
+    ~$9,730, and the gap grew with P&L."""
+    cli, seen = _capture_equity(monkeypatch)
+
+    cli._run_paper(_fake_args())
+
+    assert seen["equity"] == 9_853.25
+
+
+def test_an_explicit_equity_still_wins(monkeypatch):
+    """--equity is how you deliberately size off a notional instead."""
+    cli, seen = _capture_equity(monkeypatch)
+
+    cli._run_paper(_fake_args(equity=25_000.0))
+
+    assert seen["equity"] == 25_000.0
+
+
+def test_equity_falls_back_when_the_broker_cannot_report_it(monkeypatch):
+    """A broker returning (None, None) must not size everything off zero."""
+    from meridian import cli
+
+    cli_mod, seen = _capture_equity(monkeypatch)
+    monkeypatch.setattr(_EquityBroker, "get_account_equity", lambda self: (None, None))
+
+    cli_mod._run_paper(_fake_args())
+
+    assert seen["equity"] == cli.DEFAULT_EQUITY
+
+
+# --- O5: the ntfy topic is a credential, not a constant ---------------------
+
+
+def test_the_ntfy_topic_is_not_hardcoded_anywhere():
+    """ntfy.sh is public and unauthenticated: the topic name IS the credential.
+
+    It was committed in this file until 2026-07-30, so anyone with the repo could
+    read every trade alert and publish forged ones.
+    """
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[1] / "meridian" / "execution" / "notify.py"
+    text = source.read_text(encoding="utf-8")
+
+    assert "ntfy.sh/Meridian" not in text, "a topic is hardcoded again"
+    assert "NTFY_TOPIC" in text, "the topic must come from the environment"
+
+
+def test_no_topic_configured_means_no_request(monkeypatch):
+    """Better silent than falling back to a default topic published in the repo."""
+    from meridian.execution import notify
+
+    monkeypatch.setenv("NTFY_TOPIC", "")
+    assert notify._ntfy_url() is None
+
+    sent = []
+    monkeypatch.setattr(notify.urllib.request, "urlopen",
+                        lambda *a, **k: sent.append(1))
+    notify._send("title", "message")
+    assert sent == [], "posted somewhere with no topic configured"
+
+
+def test_the_project_env_beats_an_ambient_variable(monkeypatch):
+    """This machine has a user-level NTFY_TOPIC=WeeklyAI from another project.
+
+    `load_dotenv()` does not override an existing OS variable, so without
+    override=True that stray value silently captured Meridian's alerts.
+    """
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[1] / "meridian" / "cli.py"
+    assert "load_dotenv(override=True)" in source.read_text(encoding="utf-8")

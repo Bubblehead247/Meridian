@@ -1,7 +1,12 @@
 """Push notifications to ntfy for trade entries, exits, and daily status.
 
-Topic: Meridian-62926
-Sends via the public ntfy.sh server (no auth required for this topic).
+The topic comes from ``NTFY_TOPIC`` in the environment (``.env``), never from
+this file. ntfy.sh is public and unauthenticated: the topic name *is* the
+credential, so anyone holding it can read every trade notification and publish
+forged ones. It was hardcoded here and committed to git until 2026-07-30.
+
+With no topic set, notifications are simply off — better than falling back to a
+default topic that would be published in this file all over again.
 
 Public functions:
 - notify_entry(fill, family, model, last_close=None)
@@ -18,6 +23,7 @@ Each is a no-op on network failure — never raise in the hot path.
 
 from __future__ import annotations
 
+import os
 import urllib.request
 import urllib.error
 from datetime import date
@@ -27,11 +33,24 @@ if TYPE_CHECKING:
     from meridian.execution.broker import Fill
     from meridian.execution.live_runner import StrategyDecision
 
-_NTFY_URL = "https://ntfy.sh/Meridian-62926"
+_NTFY_SERVER = os.getenv("NTFY_SERVER", "https://ntfy.sh").rstrip("/")
+
+
+def _ntfy_url() -> str | None:
+    """Where to POST, or None when no topic is configured.
+
+    Read at call time, not import time, so a .env loaded by the CLI after this
+    module is imported still takes effect.
+    """
+    topic = os.getenv("NTFY_TOPIC", "").strip()
+    return f"{_NTFY_SERVER}/{topic}" if topic else None
 
 
 def _send(title: str, message: str, priority: str = "default", tags: str = "") -> None:
     """Fire-and-forget POST to ntfy. Silently swallows network errors."""
+    url = _ntfy_url()
+    if url is None:
+        return
     headers: dict[str, str] = {
         "Title": title.encode("utf-8").decode("latin-1", errors="replace"),
         "Priority": priority,
@@ -42,7 +61,7 @@ def _send(title: str, message: str, priority: str = "default", tags: str = "") -
 
     try:
         data = message.encode("utf-8")
-        req = urllib.request.Request(_NTFY_URL, data=data, headers=headers, method="POST")
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=5):
             pass
     except (urllib.error.URLError, OSError):
