@@ -179,15 +179,17 @@ def test_different_names_do_not_block_each_other():
         assert a.acquired and b.acquired
 
 
-def test_the_scheduler_and_the_session_take_a_lock():
-    """Both routes into placing orders must be guarded, with distinct names."""
-    from meridian.cli import SESSION_LOCK
-    from meridian.tray.main import SCHEDULER_LOCK
+def test_the_session_takes_a_lock():
+    """The route into placing orders must be guarded against running twice.
 
-    assert SCHEDULER_LOCK and SESSION_LOCK
-    assert SCHEDULER_LOCK != SESSION_LOCK, (
-        "the scheduler holds its lock for its whole life, so the session it "
-        "launches must use a different name or it would block itself")
+    This once checked two locks, because ``meridian/tray/main.py`` held a second
+    one for the life of its scheduler loop. That loop was deleted on 2026-07-31
+    (U2b): nothing had launched it since the jobs moved to Task Scheduler, which
+    now provides the once-at-a-time guarantee. Only the session lock remains.
+    """
+    from meridian.cli import SESSION_LOCK
+
+    assert SESSION_LOCK
 
 
 def test_seykotabot_and_meridian_share_one_implementation():
