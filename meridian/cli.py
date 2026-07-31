@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from meridian.deviations import list_deviations
 from meridian.estimators import list_estimators
@@ -366,6 +367,80 @@ def _cmd_run_paper(args) -> int:
     return _run_paper(args)
 
 
+#: Where the session report goes. The same file the old tray loop wrote.
+SESSION_LOG = Path(__file__).resolve().parents[1] / "meridian.log"
+
+
+def _log_session_to_file(job: str) -> None:
+    """Send this run's output to meridian.log as well as stdout.
+
+    Only the tray scheduler loop ever configured this, so when the jobs moved to
+    Task Scheduler the log simply stopped: `meridian.log` ends at 2026-07-29
+    15:31 and every session since has left no readable trace. The shared job log
+    records that a job ran, but not the session report — which strategies fired,
+    what the targets were, which orders went out.
+
+    That detail is not a nicety. Reconstructing which sleeve owned each of the 17
+    fills missing from the trade ledger (O4) was only possible *because* this file
+    existed for June and July. Losing it makes the same recovery impossible next
+    time.
+    """
+    import logging
+
+    root = logging.getLogger()
+    if any(getattr(h, "_meridian_session", False) for h in root.handlers):
+        return  # already attached (a second job in the same process)
+
+    handler = logging.FileHandler(SESSION_LOG, encoding="utf-8")
+    handler.setFormatter(logging.Formatter(
+        "%(asctime)s | %(levelname)-8s | %(message)s"))
+    handler._meridian_session = True  # type: ignore[attr-defined]
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+    logging.getLogger("meridian.session").info(f"--- {job} starting ---")
+
+    # The session report is printed, not logged, so tee stdout into the file too.
+    _tee_stdout(handler.stream)
+
+
+class _Tee:
+    """Write to two streams at once. Used to keep printed output in the log."""
+
+    def __init__(self, primary, secondary):
+        self._primary = primary
+        self._secondary = secondary
+
+    # The secondary is a logging handler's stream, and logging closes its
+    # handlers at interpreter shutdown — before the final stdout flush. Writing
+    # to the log is best-effort for exactly that window: losing the last line of
+    # a report is a fine trade for never crashing a session on the way out.
+    def write(self, text: str) -> int:
+        try:
+            self._secondary.write(text)
+            self._secondary.flush()
+        except (ValueError, OSError):
+            pass
+        return self._primary.write(text)
+
+    def flush(self) -> None:
+        self._primary.flush()
+        try:
+            self._secondary.flush()
+        except (ValueError, OSError):
+            pass
+
+    def __getattr__(self, name):
+        return getattr(self._primary, name)
+
+
+def _tee_stdout(stream) -> None:
+    if getattr(sys.stdout, "_is_meridian_tee", False):
+        return
+    tee = _Tee(sys.stdout, stream)
+    tee._is_meridian_tee = True  # type: ignore[attr-defined]
+    sys.stdout = tee
+
+
 def _as_scheduled_job(name: str, work) -> int:
     """Run ``work`` through the shared scheduled-job harness.
 
@@ -377,6 +452,8 @@ def _as_scheduled_job(name: str, work) -> int:
     """
     from quantcore.bot_schedule import for_bot
     from quantcore.jobs import JobSpec, run_job
+
+    _log_session_to_file(name)
 
     spec = next((j for j in for_bot("meridian") if j.name == name), None)
     if spec is None:  # pragma: no cover - defensive
