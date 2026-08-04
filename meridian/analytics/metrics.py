@@ -49,6 +49,27 @@ def max_drawdown_duration(returns) -> int:
     return int(longest)
 
 
+def sharpe_ratio(
+    returns, *, risk_free: float = 0.0, periods_per_year: int = PERIODS_PER_YEAR
+) -> float:
+    """Annualized Sharpe ratio of a per-bar return series (NaN if degenerate).
+
+    The single source of truth for this formula — both ``performance_metrics``
+    here and ``validation/stats.py::sharpe`` (a thin wrapper around this, at
+    ``risk_free=0.0``) call it, so it can't drift into two different answers.
+    """
+    arr = np.asarray(returns, dtype=float)
+    arr = arr[~np.isnan(arr)]
+    if arr.size < 2:
+        return float("nan")
+    vol = float(arr.std(ddof=0))
+    if vol <= 0:
+        return float("nan")
+    rf_bar = risk_free / periods_per_year
+    excess = arr - rf_bar
+    return float(excess.mean() / vol * np.sqrt(periods_per_year))
+
+
 def performance_metrics(
     returns,
     *,
@@ -84,7 +105,7 @@ def performance_metrics(
     ann_vol = vol * np.sqrt(periods_per_year)
 
     excess = arr - rf_bar
-    sharpe = float(excess.mean() / vol * np.sqrt(periods_per_year)) if vol > 0 else float("nan")
+    sharpe = sharpe_ratio(arr, risk_free=risk_free, periods_per_year=periods_per_year)
     downside = arr[arr < 0]
     dstd = float(downside.std(ddof=0)) if downside.size else 0.0
     sortino = (

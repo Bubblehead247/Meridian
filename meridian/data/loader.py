@@ -43,6 +43,7 @@ def load_ohlcv(
     interval: str = "1d",
     use_cache: bool = True,
     cache: OHLCVCache | None = None,
+    max_age_days: int | None = None,
 ) -> pd.DataFrame:
     """Load normalized OHLCV bars for one symbol.
 
@@ -58,6 +59,11 @@ def load_ohlcv(
         interval: Bar size; daily (``1d``) is the platform default.
         use_cache: Read from / write to the on-disk cache.
         cache: Optional cache instance; a default-located one is used if None.
+        max_age_days: When set, a cached file older than this is treated as a
+            miss and re-downloaded — for live/paper use, where trading on
+            stale bars is a real risk. Unset (default) preserves the
+            pre-existing behavior: any cached file is used regardless of age,
+            which is what reproducible historical research needs.
 
     Returns:
         OHLCV frame in canonical schema, sliced to the requested window.
@@ -66,7 +72,7 @@ def load_ohlcv(
 
     df: pd.DataFrame | None = None
     if use_cache:
-        df = cache.read(symbol, interval)
+        df = cache.read(symbol, interval, max_age_days=max_age_days)
 
     if df is None:
         raw = _download(symbol, start=None, end=None, interval=interval)
@@ -86,6 +92,7 @@ def load_universe(
     interval: str = "1d",
     use_cache: bool = True,
     cache: OHLCVCache | None = None,
+    max_age_days: int | None = None,
 ) -> dict[str, pd.DataFrame]:
     """Load OHLCV for many symbols, returning ``{symbol: frame}``.
 
@@ -97,7 +104,8 @@ def load_universe(
     for sym in symbols:
         try:
             out[sym] = load_ohlcv(
-                sym, start=start, end=end, interval=interval, use_cache=use_cache, cache=cache
+                sym, start=start, end=end, interval=interval, use_cache=use_cache,
+                cache=cache, max_age_days=max_age_days,
             )
         except ValueError:
             continue

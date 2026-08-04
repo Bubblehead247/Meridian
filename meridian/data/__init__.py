@@ -1,6 +1,7 @@
 """Data ingestion, caching, and universe management."""
 
 from meridian.data.cache import OHLCVCache, UniverseCache
+from meridian.data.corporate_actions import detect_adjustment_anomalies
 from meridian.data.crypto import (
     crypto_bars_per_year,
     load_crypto,
@@ -22,6 +23,7 @@ from meridian.data.universe import KNOWN_UNIVERSES, Universe, get_universe
 __all__ = [
     "OHLCVCache",
     "UniverseCache",
+    "detect_adjustment_anomalies",
     "load_ohlcv",
     "load_universe",
     "load_intraday",

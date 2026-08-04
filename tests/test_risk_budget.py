@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
+import pandas as pd
+import pytest
+
 from meridian.portfolio import (
     RiskLimits,
     StrategyLedger,
@@ -11,6 +15,7 @@ from meridian.portfolio import (
     apply_risk_contributions,
     check_suspension,
     compute_portfolio_heat,
+    marginal_risk_contributions,
     portfolio_heat_breached,
     risk_contributions,
     strategy_heat,
@@ -118,3 +123,50 @@ def test_sector_exposures_group_by_sector():
     ]
     exp = sector_exposures(positions, ACCOUNT)
     assert math.isclose(exp["tech"], 0.20) and math.isclose(exp["energy"], 0.10)
+
+
+# --- marginal risk contribution (MCTR) -------------------------------------
+
+def test_mctr_hand_computed_two_uncorrelated_sleeves():
+    # A: std=0.02, B: std=0.01, zero correlation, equal 50/50 weights.
+    # By hand: cov=[[4e-4,0],[0,1e-4]], cov@w=[2e-4,5e-5], port_var=1.25e-4,
+    # sigma_p=0.011180; shares = (w*cov_w/sigma_p)/sigma_p = 0.8 / 0.2.
+    n = 200_000
+    rng = np.random.default_rng(1)
+    a = pd.Series(rng.normal(0, 0.02, n))
+    b = pd.Series(rng.normal(0, 0.01, n))  # independent draw -> ~zero correlation
+    out = marginal_risk_contributions({"a": a, "b": b}, {"a": 0.5, "b": 0.5})
+    assert out["a"] == pytest.approx(0.8, abs=0.02)
+    assert out["b"] == pytest.approx(0.2, abs=0.02)
+    assert out["a"] + out["b"] == pytest.approx(1.0, abs=1e-6)
+
+
+def test_mctr_sums_to_one_euler_identity():
+    rng = np.random.default_rng(2)
+    common = rng.normal(0, 0.01, 5000)
+    returns = {
+        name: pd.Series(common * beta + rng.normal(0, 0.01, 5000))
+        for name, beta in [("mr", 0.3), ("tf", -0.2), ("mom", 0.5), ("sr", 0.1)]
+    }
+    weights = {"mr": 0.25, "tf": 0.25, "mom": 0.25, "sr": 0.25}
+    out = marginal_risk_contributions(returns, weights)
+    assert sum(out.values()) == pytest.approx(1.0, abs=1e-6)
+    assert set(out) == set(weights)
+
+
+def test_mctr_excludes_sleeves_without_return_series():
+    rng = np.random.default_rng(3)
+    returns = {"mr": pd.Series(rng.normal(0, 0.01, 500)), "tf": pd.Series(rng.normal(0, 0.01, 500))}
+    weights = {"mr": 0.4, "tf": 0.4, "cash_reserve": 0.2}  # cash has no return series
+    out = marginal_risk_contributions(returns, weights)
+    assert out["cash_reserve"] == 0.0
+    assert set(out) == set(weights)
+
+
+def test_mctr_fewer_than_two_sleeves_is_all_zero():
+    out = marginal_risk_contributions({"mr": pd.Series([0.01, 0.02])}, {"mr": 1.0, "tf": 0.0})
+    assert out == {"mr": 0.0, "tf": 0.0}
+
+
+def test_mctr_empty_is_safe():
+    assert marginal_risk_contributions({}, {"mr": 1.0}) == {"mr": 0.0}

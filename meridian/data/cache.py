@@ -13,6 +13,7 @@ re-trigger downloads.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -23,10 +24,19 @@ DEFAULT_CACHE_DIR = Path("data_cache")
 
 
 class OHLCVCache:
-    """Parquet-backed cache of OHLCV frames, keyed by symbol and interval."""
+    """Parquet-backed cache of OHLCV frames, keyed by symbol and interval.
 
-    def __init__(self, cache_dir: str | Path = DEFAULT_CACHE_DIR):
+    Caching is a pure performance concern: clearing the cache must never
+    change results, only re-trigger downloads. ``max_age_days`` preserves
+    that — it only automates *when* a re-trigger happens (treating a stale
+    file as a miss), it never changes what a fresh download would produce.
+    Historical/research callers should leave it unset (the default,
+    unchanged behavior); live/paper callers that need today's bars can opt in.
+    """
+
+    def __init__(self, cache_dir: str | Path = DEFAULT_CACHE_DIR, max_age_days: int | None = None):
         self.root = Path(cache_dir) / "ohlcv"
+        self.max_age_days = max_age_days
 
     def path(self, symbol: str, interval: str) -> Path:
         safe = symbol.upper().replace("/", "_")
@@ -35,12 +45,32 @@ class OHLCVCache:
     def has(self, symbol: str, interval: str) -> bool:
         return self.path(symbol, interval).exists()
 
-    def read(self, symbol: str, interval: str) -> pd.DataFrame | None:
-        """Return the cached frame, or None if not cached."""
+    def has_fresh(self, symbol: str, interval: str, max_age_days: int | None = None) -> bool:
+        """Whether a cached file exists and is within ``max_age_days`` of now.
+
+        Args:
+            max_age_days: Overrides the instance default; ``None`` (either
+                here or on the instance) means "no TTL" — any existing file
+                counts as fresh, matching the pre-TTL behavior.
+        """
         p = self.path(symbol, interval)
         if not p.exists():
+            return False
+        age_limit = max_age_days if max_age_days is not None else self.max_age_days
+        if age_limit is None:
+            return True
+        age_seconds = time.time() - p.stat().st_mtime
+        return age_seconds <= age_limit * 86400
+
+    def read(self, symbol: str, interval: str, max_age_days: int | None = None) -> pd.DataFrame | None:
+        """Return the cached frame, or None if not cached or stale.
+
+        Args:
+            max_age_days: Overrides the instance default TTL for this call.
+        """
+        if not self.has_fresh(symbol, interval, max_age_days):
             return None
-        return normalize_ohlcv(pd.read_parquet(p))
+        return normalize_ohlcv(pd.read_parquet(self.path(symbol, interval)))
 
     def write(self, symbol: str, interval: str, df: pd.DataFrame) -> Path:
         """Write a frame to the cache (normalized first) and return its path."""

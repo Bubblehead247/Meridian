@@ -12,6 +12,7 @@ from meridian.analytics import (
     max_drawdown,
     max_drawdown_duration,
     performance_metrics,
+    sharpe_ratio,
     write_report,
 )
 
@@ -48,6 +49,20 @@ def test_profit_factor_all_wins_is_inf():
     m = performance_metrics(pd.Series([0.01, 0.02, 0.03]))
     assert m["profit_factor"] == float("inf")
     assert m["hit_rate"] == 1.0
+
+
+def test_sharpe_ratio_matches_performance_metrics_and_validation_stats():
+    """Consolidation check: analytics.sharpe_ratio, performance_metrics()'s
+    'sharpe' field, and validation.stats.sharpe must all agree exactly (same
+    formula, one source of truth) — this was two hand-written copies before."""
+    from meridian.validation.stats import sharpe as validation_sharpe
+
+    rng = np.random.default_rng(9)
+    r = rng.normal(0.0005, 0.01, 500)
+    a = sharpe_ratio(r)
+    b = performance_metrics(r)["sharpe"]
+    c = validation_sharpe(r)
+    assert a == b == c
 
 
 def test_metrics_empty_is_safe():

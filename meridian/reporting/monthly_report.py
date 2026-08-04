@@ -36,18 +36,25 @@ def _format_portfolio_summary(review: MonthlyReview) -> str:
     return "\n".join(lines)
 
 
-def _sleeve_table(sleeves: list[SleeveAction]) -> str:
+def _sleeve_table(sleeves: list[SleeveAction], mctr: dict[str, float] | None = None) -> str:
+    mctr = mctr or {}
     header = (
-        "| Sleeve | Stage | Action | Return | vs Bench | DD | Risk Contrib | Permitted |\n"
-        "|---|---|---|---:|---:|---:|---:|:---:|"
+        "| Sleeve | Stage | Action | Return | vs Bench | DD | Risk Contrib | MCTR | Permitted |\n"
+        "|---|---|---|---:|---:|---:|---:|---:|:---:|"
     )
     rows = [
         f"| {s.sleeve} | {s.stage} | **{s.action}** | {s.return_pct:.2%} | "
         f"{s.excess_vs_benchmark:+.2%} | {s.drawdown_cur:.1%} | "
-        f"{s.risk_contribution:.0%} | {'✅' if s.permitted else '⛔'} |"
+        f"{s.risk_contribution:.0%} | {mctr.get(s.sleeve, 0.0):.0%} | "
+        f"{'✅' if s.permitted else '⛔'} |"
         for s in sleeves
     ]
-    return "\n".join([header, *rows])
+    note = (
+        "\n\n_Risk Contrib = share of stop-distance heat. MCTR = share of "
+        "portfolio volatility (correlation-adjusted) — a sleeve can be low on "
+        "one and high on the other._"
+    )
+    return "\n".join([header, *rows]) + note
 
 
 def _format_sleeve_section(sleeve: SleeveAction) -> str:
@@ -66,7 +73,7 @@ def render_monthly_report(review: MonthlyReview) -> str:
         _format_regime_summary(review),
         "",
         "## Sleeve actions",
-        _sleeve_table(review.sleeves),
+        _sleeve_table(review.sleeves, review.marginal_risk_contribution),
         "",
         "## Rationale",
         *[_format_sleeve_section(s) for s in review.sleeves],

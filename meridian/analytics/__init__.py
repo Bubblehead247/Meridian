@@ -9,6 +9,7 @@ from meridian.analytics.metrics import (
     max_drawdown,
     max_drawdown_duration,
     performance_metrics,
+    sharpe_ratio,
 )
 from meridian.analytics.report import build_validation_report, write_report
 
@@ -18,6 +19,7 @@ __all__ = [
     "drawdown_series",
     "max_drawdown",
     "max_drawdown_duration",
+    "sharpe_ratio",
     "build_validation_report",
     "write_report",
 ]

@@ -16,6 +16,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+import pandas as pd
+
 from meridian.portfolio.ledger import StrategyLedger
 
 
@@ -100,6 +103,57 @@ def apply_risk_contributions(
     contrib = risk_contributions(ledgers, account_equity)
     for led in ledgers:
         led.update_metrics(risk_contribution=contrib[led.name])
+
+
+def marginal_risk_contributions(
+    sleeve_returns: dict[str, "pd.Series"], weights: dict[str, float]
+) -> dict[str, float]:
+    """Each sleeve's share of *portfolio volatility* (correlation-adjusted), not heat.
+
+    Standard risk-parity / component-VaR decomposition: portfolio volatility
+    ``sigma_p = sqrt(w'*Sigma*w)`` is homogeneous of degree 1 in the weights,
+    so by Euler's theorem it decomposes exactly into per-sleeve component
+    contributions ``CCTR_i = w_i * (Sigma*w)_i / sigma_p``, which sum exactly
+    to ``sigma_p``. Returned as shares of that sum (so they sum to ~1, the
+    same convention as ``risk_contributions()``), and both are meant to sit
+    side by side — heat measures stop-distance risk, this measures how much
+    of the portfolio's actual variance each sleeve explains once correlation
+    with the others is accounted for. A sleeve with low heat can still
+    dominate this if it's the uncorrelated one carrying most of the swings.
+
+    Args:
+        sleeve_returns: ``{sleeve: return_series}`` (e.g. from
+            ``experiments/fund.py``'s ``run_fund``/``run_cs_fund``). Sleeves
+            with no return series (no model ran there) are excluded from the
+            covariance matrix and returned with a 0.0 contribution.
+        weights: ``{sleeve: capital_alloc / account_equity}`` for every
+            sleeve — only entries also present in ``sleeve_returns`` are used
+            to build the covariance matrix.
+
+    Returns:
+        ``{sleeve: share}`` for every key in ``weights`` (0.0 for sleeves
+        without a return series, or all sleeves when fewer than 2 have
+        returns, or the portfolio variance is degenerate).
+    """
+    names = [n for n in weights if n in sleeve_returns]
+    out = {n: 0.0 for n in weights}
+    if len(names) < 2:
+        return out
+
+    frame = pd.DataFrame({n: sleeve_returns[n] for n in names})
+    cov = frame.cov().to_numpy()
+    w = np.array([weights[n] for n in names], dtype=float)
+    cov_w = cov @ w
+    port_var = float(w @ cov_w)
+    if port_var <= 0 or port_var != port_var:
+        return out
+
+    sigma_p = np.sqrt(port_var)
+    cctr = w * cov_w / sigma_p        # component contributions, sum to sigma_p
+    shares = cctr / sigma_p           # normalize to shares summing to ~1
+    for n, s in zip(names, shares, strict=True):
+        out[n] = float(s)
+    return out
 
 
 def check_suspension(

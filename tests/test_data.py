@@ -67,6 +67,78 @@ def test_ohlcv_cache_miss_returns_none(tmp_path):
     assert OHLCVCache(tmp_path).read("NOPE", "1d") is None
 
 
+# --- cache TTL --------------------------------------------------------------
+
+def test_max_age_none_never_expires(tmp_path):
+    """Default behavior unchanged: no TTL means any existing file is fresh."""
+    cache = OHLCVCache(tmp_path)  # max_age_days=None
+    cache.write("SPY", "1d", _raw_yf_frame())
+    assert cache.has_fresh("SPY", "1d")
+    assert cache.read("SPY", "1d") is not None
+
+
+def test_stale_cache_is_treated_as_a_miss(tmp_path, monkeypatch):
+    import os
+    import time
+
+    cache = OHLCVCache(tmp_path, max_age_days=1)
+    cache.write("SPY", "1d", _raw_yf_frame())
+    p = cache.path("SPY", "1d")
+    old = time.time() - 2 * 86400  # 2 days old
+    os.utime(p, (old, old))
+
+    assert not cache.has_fresh("SPY", "1d")
+    assert cache.read("SPY", "1d") is None
+
+
+def test_fresh_cache_within_ttl_is_used(tmp_path):
+    cache = OHLCVCache(tmp_path, max_age_days=7)
+    cache.write("SPY", "1d", _raw_yf_frame())
+    assert cache.has_fresh("SPY", "1d")
+    assert cache.read("SPY", "1d") is not None
+
+
+def test_per_call_max_age_overrides_instance_default(tmp_path):
+    import os
+    import time
+
+    cache = OHLCVCache(tmp_path)  # no instance TTL
+    cache.write("SPY", "1d", _raw_yf_frame())
+    p = cache.path("SPY", "1d")
+    old = time.time() - 2 * 86400
+    os.utime(p, (old, old))
+
+    assert cache.has_fresh("SPY", "1d")                       # instance default: no TTL
+    assert not cache.has_fresh("SPY", "1d", max_age_days=1)    # per-call override: stale
+    assert cache.read("SPY", "1d", max_age_days=1) is None
+
+
+def test_load_ohlcv_max_age_days_forces_redownload_when_stale(tmp_path, monkeypatch):
+    import os
+    import time
+
+    calls = {"n": 0}
+
+    def fake_download(symbol, start, end, interval):
+        calls["n"] += 1
+        return _raw_yf_frame(n=40, start="2020-01-01")
+
+    monkeypatch.setattr(loader_mod, "_download", fake_download)
+    cache = OHLCVCache(tmp_path)
+
+    load_ohlcv("SPY", cache=cache)
+    assert calls["n"] == 1
+
+    old = time.time() - 2 * 86400
+    os.utime(cache.path("SPY", "1d"), (old, old))
+
+    load_ohlcv("SPY", cache=cache, max_age_days=1)  # stale -> re-fetches
+    assert calls["n"] == 2
+
+    load_ohlcv("SPY", cache=cache)  # no TTL passed -> uses the (now fresh) cache
+    assert calls["n"] == 2
+
+
 # --- loader ---------------------------------------------------------------
 
 def test_load_ohlcv_downloads_caches_and_slices(tmp_path, monkeypatch):

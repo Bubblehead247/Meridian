@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from meridian.portfolio import (
     StrategyLedger,
@@ -90,6 +91,7 @@ def test_portfolio_context_heat_and_correlation():
     assert rev.portfolio_heat > 0                       # 'a' has an at-risk position
     assert abs(rev.avg_correlation - 1.0) < 1e-9        # identical streams
     assert ("a", "b") in rev.high_corr_pairs
+    assert sum(rev.marginal_risk_contribution.values()) == pytest.approx(1.0, abs=1e-6)
 
 
 # --- rendering ------------------------------------------------------------
@@ -104,6 +106,7 @@ def test_render_and_write_report(tmp_path):
     assert "# Monthly Review — 2026-06-30" in md
     assert "## Sleeve actions" in md and "## Action summary" in md
     assert "trend `neutral`" in md
+    assert "MCTR" in md
 
     path = write_monthly_report(rev, tmp_path)
     assert path.name == "monthly_review_2026-06-30.md"

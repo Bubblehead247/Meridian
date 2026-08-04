@@ -33,6 +33,7 @@ from meridian.portfolio.risk_budget import (
     RiskLimits,
     check_suspension,
     compute_portfolio_heat,
+    marginal_risk_contributions,
     portfolio_heat_breached,
     sector_exposures,
 )
@@ -81,6 +82,7 @@ class MonthlyReview:
     high_corr_pairs: list[tuple[str, str]]
     regime: tuple[str, str, str] | None
     sleeves: list[SleeveAction]
+    marginal_risk_contribution: dict[str, float] = field(default_factory=dict)
 
 
 def _permitted(family: str, regime: RegimeLabel | None) -> bool:
@@ -203,6 +205,12 @@ def run_monthly_review(
         if current_regime is not None else None
     )
 
+    weights = {
+        led.name: (led.capital_alloc / account_equity if account_equity > 0 else 0.0)
+        for led in ledgers
+    }
+    mctr = marginal_risk_contributions(sleeve_returns or {}, weights)
+
     return MonthlyReview(
         as_of=as_of,
         account_equity=account_equity,
@@ -213,4 +221,5 @@ def run_monthly_review(
         high_corr_pairs=flag_high_correlation(matrix) if not matrix.empty else [],
         regime=regime_tuple,
         sleeves=actions,
+        marginal_risk_contribution=mctr,
     )

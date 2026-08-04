@@ -9,19 +9,19 @@ from __future__ import annotations
 
 import numpy as np
 
+from meridian.analytics.metrics import sharpe_ratio
 from meridian.signals.backtest import PERIODS_PER_YEAR
 
 
 def sharpe(returns, periods_per_year: int = PERIODS_PER_YEAR) -> float:
-    """Annualized Sharpe ratio of a per-bar return series (NaN if degenerate)."""
-    r = np.asarray(returns, dtype=float)
-    r = r[~np.isnan(r)]
-    if r.size < 2:
-        return float("nan")
-    sd = r.std(ddof=0)
-    if sd <= 0:
-        return float("nan")
-    return float(r.mean() / sd * np.sqrt(periods_per_year))
+    """Annualized Sharpe ratio of a per-bar return series (NaN if degenerate).
+
+    Thin wrapper around ``analytics.metrics.sharpe_ratio`` at ``risk_free=0.0``
+    (this module never adjusted for a risk-free rate) — the single source of
+    truth for the formula lives there now, so it can't drift into two
+    different answers across the two modules.
+    """
+    return sharpe_ratio(returns, risk_free=0.0, periods_per_year=periods_per_year)
 
 
 def total_return(returns) -> float:
