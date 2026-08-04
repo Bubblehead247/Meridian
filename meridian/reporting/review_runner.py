@@ -14,6 +14,8 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date, timedelta
 
+import pandas as pd
+
 from meridian.data import load_ohlcv
 from meridian.pipeline.records import load_records
 from meridian.portfolio.allocation import SLEEVE_ALLOCATIONS, seed_ledgers
@@ -60,6 +62,43 @@ def _aggregate_scorecard(records: list) -> dict:
         "max_drawdown": min(dds),     # worst across strategies in the sleeve
         "n_strategies": len(records),
     }
+
+
+def _sleeve_returns_from_records(
+    paper_records: list, price_start: str = "2023-01-01"
+) -> dict[str, pd.Series]:
+    """Reconstruct one return series per family for the correlation/MCTR blocks.
+
+    For each family, re-backtests the best-Sharpe *single-asset* record's
+    model on its saved symbol (cached prices — this reconstructs a historical
+    view for reporting, not a live trading decision, so the on-disk cache is
+    fine here unlike ``_fetch_prices``'s live path). Cross-sectional records
+    are skipped: they need a basket, not one symbol, to backtest — same
+    constraint as ``run_cs_fund``'s callers that don't have OHLC baskets handy.
+    Failures for one family (bad/missing cached data, model errors) are
+    swallowed so one broken record doesn't blank out the whole review.
+    """
+    from meridian.families import create_model
+
+    by_family: dict[str, list] = defaultdict(list)
+    for r in paper_records:
+        by_family[r.family].append(r)
+
+    out: dict[str, pd.Series] = {}
+    for family, recs in by_family.items():
+        candidates = sorted(recs, key=lambda r: r.scorecard.get("sharpe") or float("-inf"), reverse=True)
+        for rec in candidates:
+            try:
+                model = create_model(family, rec.model)
+                if getattr(model, "cross_sectional", False):
+                    continue
+                frame = load_ohlcv(rec.symbol, price_start)
+                result = model.backtest(frame["close"], bars=frame)
+                out[family] = result.returns
+                break
+            except Exception:
+                continue
+    return out
 
 
 def _dry_run_decisions(equity: float = 10_000.0, price_start: str = "2023-01-01") -> list:
@@ -189,10 +228,11 @@ def build_paper_review(
     scorecards = {fam: _aggregate_scorecard(recs) for fam, recs in by_family.items()}
     ledgers    = seed_ledgers(equity, stage="paper")
 
-    benchmark_ret = _benchmark_return(lookback_days)
-    regime        = _current_regime()
-    decisions     = _dry_run_decisions(equity=equity, price_start=price_start)
-    signals       = _today_signals_brief(decisions)
+    benchmark_ret  = _benchmark_return(lookback_days)
+    regime         = _current_regime()
+    decisions      = _dry_run_decisions(equity=equity, price_start=price_start)
+    signals        = _today_signals_brief(decisions)
+    sleeve_returns = _sleeve_returns_from_records(paper_records, price_start=price_start)
 
     review = run_monthly_review(
         ledgers,
@@ -200,6 +240,7 @@ def build_paper_review(
         account_equity=equity,
         benchmark_return=benchmark_ret,
         current_regime=regime,
+        sleeve_returns=sleeve_returns,
     )
 
     sector_md    = _render_sector_exposure(decisions)

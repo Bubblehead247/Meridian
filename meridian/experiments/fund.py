@@ -117,12 +117,17 @@ def run_cs_fund(
     equity: float = 100_000.0,
     cost_bps: float = 1.0,
     regime_frame: pd.DataFrame | None = None,
+    bars_by_symbol: dict[str, pd.DataFrame] | None = None,
 ) -> tuple[list[StrategyLedger], MonthlyReview]:
     """Fund lifecycle on a cross-sectional basket; only CS models from each family run.
 
     Families with no CS model (mean_reversion, trend_following, breakouts, pullback,
     long_term_etf, cash_reserve, experimental_research) stay at their seeded stage.
     Currently only momentum and sector_rotation register CS models.
+
+    ``bars_by_symbol`` (optional OHLC per symbol) enables next-open fills — see
+    ``CrossSectionalModel.backtest``. Without it, fills fall back to the same
+    close the signal was computed from.
     """
     from meridian.pipeline import run_universe_pipeline
 
@@ -136,11 +141,13 @@ def run_cs_fund(
         model = create_model(led.family, cs_name)
         results = run_universe_pipeline(
             model, prices_by_symbol, ledger=led, cost_bps=cost_bps,
-            regime_frame=regime_frame,
+            bars_by_symbol=bars_by_symbol, regime_frame=regime_frame,
         )
         if results:
             scorecards[led.name] = list(results.values())[-1].scorecard
-            sleeve_returns[led.name] = model.backtest(prices_by_symbol, cost_bps=cost_bps).returns
+            sleeve_returns[led.name] = model.backtest(
+                prices_by_symbol, cost_bps=cost_bps, bars_by_symbol=bars_by_symbol
+            ).returns
     current_regime = _current_regime(regime_frame)
     review = run_monthly_review(
         ledgers, scorecards, account_equity=equity, current_regime=current_regime,

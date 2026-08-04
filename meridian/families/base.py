@@ -214,8 +214,20 @@ class CrossSectionalModel:
             )
         return rank_signals(scores, quantile=self.quantile, long_only=self.long_only)
 
-    def backtest(self, prices_by_symbol: dict[str, pd.Series], *, cost_bps: float = 1.0):
-        """Backtest the ranked portfolio via the shared cross-sectional engine."""
+    def backtest(
+        self,
+        prices_by_symbol: dict[str, pd.Series],
+        *,
+        cost_bps: float = 1.0,
+        bars_by_symbol: dict[str, pd.DataFrame] | None = None,
+    ):
+        """Backtest the ranked portfolio via the shared cross-sectional engine.
+
+        ``bars_by_symbol`` (optional OHLC per symbol) enables next-open fills
+        via ``backtest_portfolio``'s ``open_prices`` — see that function and
+        ``Model.backtest``'s single-asset equivalent. Without it, fills fall
+        back to the same close the signal was computed from.
+        """
         from meridian.portfolio import backtest_portfolio
 
         # Separate filter symbol from the tradeable universe
@@ -237,8 +249,19 @@ class CrossSectionalModel:
         prices = pd.DataFrame(
             {s: pd.Series(p) for s, p in tradeable.items()}
         ).reindex(signals.index)
+
+        open_prices = None
+        if bars_by_symbol:
+            opens = {
+                s: b["open"].reindex(signals.index)
+                for s, b in bars_by_symbol.items() if s in tradeable and "open" in b.columns
+            }
+            if opens:
+                open_prices = pd.DataFrame(opens)
+
         result = backtest_portfolio(
-            signals, prices, sizing=self.sizing, cost_bps=cost_bps, lookback=self.lookback
+            signals, prices, sizing=self.sizing, cost_bps=cost_bps, lookback=self.lookback,
+            open_prices=open_prices,
         )
         result.meta.update({"family": self.family, "model": self.name})
         return result

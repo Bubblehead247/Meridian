@@ -110,7 +110,16 @@ def run_universe_backtest(
         window=window, bars_by_symbol=bars_by_symbol,
     ).reindex(idx)
     prices = pd.DataFrame({s: p.reindex(idx) for s, p in prices_by_symbol.items()})
+
+    open_prices = None
+    if bars_by_symbol:
+        opens = {
+            s: b["open"].reindex(idx) for s, b in bars_by_symbol.items() if "open" in b.columns
+        }
+        if opens:
+            open_prices = pd.DataFrame(opens)
+
     return backtest_portfolio(
         signals, prices, sizing=sizing, cost_bps=cost_bps, lookback=window,
-        flatten_overnight=flatten_overnight,
+        flatten_overnight=flatten_overnight, open_prices=open_prices,
     )

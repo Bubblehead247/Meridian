@@ -87,6 +87,38 @@ def test_portfolio_costs_reduce_return():
     assert costed < free
 
 
+# --- fill realism (mirrors signals/backtest.py's single-asset fix) ---------
+
+def test_portfolio_no_open_prices_falls_back_to_close_approx():
+    prices = pd.DataFrame({"A": [100.0, 101.0], "B": [100.0, 99.0]})
+    signals = pd.DataFrame({"A": [1, 1], "B": [1, 1]})
+    res = backtest_portfolio(signals, prices, cost_bps=0.0)
+    assert res.meta["fill_realism"] == "close_approx"
+
+
+def test_portfolio_open_prices_uses_next_open_fill():
+    # Flat closes but a gap between close and next open on bar 1.
+    prices = pd.DataFrame({"A": [100.0, 100.0, 100.0], "B": [100.0, 100.0, 100.0]})
+    open_prices = pd.DataFrame({"A": [100.0, 105.0, 110.0], "B": [100.0, 105.0, 110.0]})
+    signals = pd.DataFrame({"A": [1, 1, 1], "B": [1, 1, 1]})
+
+    close_approx = backtest_portfolio(signals, prices, cost_bps=0.0)
+    next_open = backtest_portfolio(signals, prices, cost_bps=0.0, open_prices=open_prices)
+
+    assert close_approx.meta["fill_realism"] == "close_approx"
+    assert next_open.meta["fill_realism"] == "next_open"
+    assert close_approx.equity.iloc[-1] == pytest.approx(1.0)   # flat close series
+    assert next_open.equity.iloc[-1] != pytest.approx(1.0)      # gap is captured
+
+
+def test_portfolio_open_prices_all_nan_falls_back():
+    prices = pd.DataFrame({"A": [100.0, 101.0], "B": [100.0, 99.0]})
+    open_prices = pd.DataFrame({"A": [np.nan, np.nan], "B": [np.nan, np.nan]})
+    signals = pd.DataFrame({"A": [1, 1], "B": [1, 1]})
+    res = backtest_portfolio(signals, prices, cost_bps=0.0, open_prices=open_prices)
+    assert res.meta["fill_realism"] == "close_approx"
+
+
 # --- universe runner ------------------------------------------------------
 
 def test_common_index_is_intersection():
@@ -120,6 +152,20 @@ def test_universe_backtest_runs_with_staggered_listings():
     )
     assert len(res.returns) == 400              # union calendar, not 100
     assert res.gross_exposure.iloc[:50].sum() >= 0  # early bars: only OLD can be active
+
+
+def test_run_universe_backtest_uses_next_open_fill_when_bars_given():
+    uni = _universe(k=3, n=300)
+    bars = {
+        sym: pd.DataFrame({"open": px.values, "high": px + 1, "low": px - 1}, index=px.index)
+        for sym, px in uni.items()
+    }
+    without = run_universe_backtest(uni, "sma", "zscore", SignalConfig(entry_threshold=1.0), window=20)
+    with_bars = run_universe_backtest(
+        uni, "sma", "zscore", SignalConfig(entry_threshold=1.0), window=20, bars_by_symbol=bars,
+    )
+    assert without.meta["fill_realism"] == "close_approx"
+    assert with_bars.meta["fill_realism"] == "next_open"
 
 
 # --- intraday: flatten-at-close (no overnight) -----------------------------
@@ -269,9 +315,25 @@ def test_validate_universe_verdict_table():
         spec=spec, window=20, n_boot=150, n_mc=120, block=10, seed=0,
     )
     for col in ["estimator", "oos_sharpe", "boot_ci_low", "mc_pvalue", "q_value",
-                "significant", "n_symbols"]:
+                "significant", "n_symbols", "dsr_pvalue", "m_eff", "q_value_eff",
+                "significant_eff"]:
         assert col in df.columns
     assert set(df["estimator"]) == {"sma", "ou", "ens_invvar"}
     assert df["significant"].dtype == bool
+    assert df["significant_eff"].dtype == bool
     assert (df["n_symbols"] == 6).all()
     assert df["oos_sharpe"].is_monotonic_decreasing
+    assert (df["m_eff"] <= len(df)).all() and (df["m_eff"] >= 1.0).all()
+    assert df["dsr_pvalue"].between(0.0, 1.0).all()
+
+
+def test_validate_universe_m_eff_lower_for_correlated_estimators():
+    """Near-identical estimators on the same data should show heavy collinearity."""
+    uni = _universe(k=6, n=700)
+    spec = WalkForwardSpec(mode="anchored", min_train=250, test_span=100, step=100)
+    # sma/wma/trima are all short-window moving-average variants -> highly correlated.
+    df = validate_universe(
+        uni, ["sma", "wma", "trima"], "zscore", SignalConfig(entry_threshold=1.0),
+        spec=spec, window=20, n_boot=100, n_mc=100, block=10, seed=0,
+    )
+    assert df["m_eff"].iloc[0] < 3.0

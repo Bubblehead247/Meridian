@@ -97,6 +97,35 @@ def test_cs_fund_runs_and_produces_monthly_review(monkeypatch):
     assert "momentum" in sleeve_names or "sector_rotation" in sleeve_names
 
 
+def test_cs_fund_bars_by_symbol_enables_next_open_fill():
+    """run_cs_fund's bars_by_symbol reaches the cross-sectional fill-price fix."""
+    from meridian.experiments.fund import _first_cs_model, run_cs_fund
+    from meridian.families import create_model
+
+    n = 1200
+    idx = pd.date_range("2010-01-01", periods=n, freq="B")
+
+    def _make_series(drift, seed):
+        rng = np.random.default_rng(seed)
+        return pd.Series(100 * np.exp(np.cumsum(rng.normal(drift, 0.01, n))), index=idx)
+
+    basket = {s: _make_series(d, i) for i, (s, d) in enumerate(zip(
+        ["XLK", "XLF", "XLE", "XLY", "XLV", "XLI"],
+        [0.0006, 0.0003, 0.0, -0.0002, 0.0004, 0.0001],
+        strict=True,
+    ))}
+    bars = {
+        sym: pd.DataFrame({"open": px.values, "high": px + 1, "low": px - 1}, index=px.index)
+        for sym, px in basket.items()
+    }
+
+    ledgers, review = run_cs_fund(basket, equity=100_000.0, bars_by_symbol=bars)
+    cs_family = next(f for f in ("momentum", "sector_rotation") if _first_cs_model(f))
+    model = create_model(cs_family, _first_cs_model(cs_family))
+    result = model.backtest(basket, bars_by_symbol=bars)
+    assert result.meta["fill_realism"] == "next_open"
+
+
 def test_fund_populates_sleeve_correlation():
     """run_fund wires real sleeve return series into the monthly review's correlation block."""
     from meridian.experiments.fund import run_fund

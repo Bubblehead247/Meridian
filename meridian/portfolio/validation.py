@@ -21,6 +21,8 @@ from meridian.portfolio.universe import common_index, run_universe_backtest, uni
 from meridian.signals import SignalConfig
 from meridian.validation.bootstrap import block_bootstrap_sharpe
 from meridian.validation.correction import correct
+from meridian.validation.deflated_sharpe import deflated_sharpe_ratio
+from meridian.validation.effective_tests import effective_num_tests
 from meridian.validation.stats import sharpe, total_return
 from meridian.validation.walkforward import WalkForwardSpec, make_folds
 
@@ -87,13 +89,21 @@ def validate_universe(
     tradable ``prices_by_symbol`` (relative-value / cross-sectional strategies).
 
     Returns a ranked verdict table (same columns as the single-asset
-    `validate`, plus `n_symbols`), sorted by out-of-sample Sharpe.
+    `validate`, plus `n_symbols`), sorted by out-of-sample Sharpe. Also
+    includes `validate()`'s Phase 2 robustness columns — `dsr_pvalue`
+    (Deflated Sharpe Ratio), `m_eff`/`q_value_eff`/`significant_eff`
+    (collinearity-adjusted correction) — computed the same way, reusing the
+    stitched OOS return series this function already builds per estimator.
+    `q_value`/`significant` remain the raw-m correction for backward
+    compatibility, unchanged by the additions.
     """
     idx = union_index(prices_by_symbol) if align == "union" else common_index(prices_by_symbol)
     spec = spec or WalkForwardSpec()
     folds = make_folds(len(idx), spec)
 
     rows = []
+    returns_by_estimator: dict[str, pd.Series] = {}
+    per_period_sharpes: dict[str, float] = {}
     for est in estimators:
         pr = run_universe_backtest(
             prices_by_symbol, est, deviation, signal,
@@ -106,6 +116,12 @@ def validate_universe(
         stitched = pd.concat([net.iloc[f.test_start:f.test_end] for f in folds])
         held_oos = pd.concat([pr.weights.iloc[f.test_start:f.test_end] for f in folds])
         ret_oos = pd.concat([pr.returns_by_symbol.iloc[f.test_start:f.test_end] for f in folds])
+        returns_by_estimator[est] = stitched
+
+        arr = stitched.to_numpy(dtype=float)
+        arr = arr[~np.isnan(arr)]
+        std = arr.std(ddof=1) if arr.size > 1 else float("nan")
+        per_period_sharpes[est] = float(arr.mean() / std) if std == std and std > 0 else float("nan")
 
         boot = block_bootstrap_sharpe(
             stitched, n_boot=n_boot, block=block, periods_per_year=periods_per_year, seed=seed
@@ -125,8 +141,25 @@ def validate_universe(
             }
         )
 
+    trial_sharpes = list(per_period_sharpes.values())
+    dsr_pvalues = [
+        deflated_sharpe_ratio(
+            returns_by_estimator[est], trial_sharpes=trial_sharpes, n_trials=len(estimators)
+        )["dsr_pvalue"]
+        for est in estimators
+    ]
+
     df = pd.DataFrame(rows)
-    res = correct(df["mc_pvalue"].fillna(1.0).to_numpy(), method=method, alpha=alpha)
-    q_col = res["qvalues"] if method == "bh" else res["adjusted"]
-    df = df.assign(q_value=q_col, significant=res["reject"])
+    df["dsr_pvalue"] = dsr_pvalues
+
+    pvals = df["mc_pvalue"].fillna(1.0).to_numpy()
+    res_raw = correct(pvals, method=method, alpha=alpha)
+    q_col_raw = res_raw["qvalues"] if method == "bh" else res_raw["adjusted"]
+    df = df.assign(q_value=q_col_raw, significant=res_raw["reject"])
+
+    m_eff = effective_num_tests(returns_by_estimator)
+    res_eff = correct(pvals, method=method, alpha=alpha, m_eff=m_eff)
+    q_col_eff = res_eff["qvalues"] if method == "bh" else res_eff["adjusted"]
+    df = df.assign(m_eff=m_eff, q_value_eff=q_col_eff, significant_eff=res_eff["reject"])
+
     return df.sort_values("oos_sharpe", ascending=False).reset_index(drop=True)

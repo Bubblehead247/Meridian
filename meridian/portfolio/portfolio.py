@@ -37,6 +37,7 @@ def backtest_portfolio(
     cost_bps: float = 1.0,
     lookback: int = 20,
     flatten_overnight: bool = False,
+    open_prices: pd.DataFrame | None = None,
 ) -> PortfolioResult:
     """Backtest a cross-sectional portfolio.
 
@@ -52,14 +53,31 @@ def backtest_portfolio(
             held position is lagged, the next session opens flat, so the overnight
             gap return is never booked and nothing is carried overnight (and the
             daily flatten shows up as real turnover/cost).
+        open_prices: Optional per-symbol open prices, same columns as ``prices``.
+            When given, fills use the *next* bar's open — the earliest price
+            actually reachable by an order placed after seeing the bar that
+            produced the signal (mirrors ``signals/backtest.py::backtest``'s
+            single-asset fix). Without it, fills fall back to the same close
+            the signal was computed from (unrealistic; flagged via
+            ``meta["fill_realism"]``).
 
     Returns:
         A `PortfolioResult` whose `returns` is the net portfolio return series.
     """
     prices = prices.reindex(columns=signals.columns)
+
+    fill_realism = "close_approx"
+    fill_prices = prices
+    if open_prices is not None:
+        op = open_prices.reindex(columns=signals.columns)
+        if op.notna().any(axis=None):
+            # The bar t decision (from close t) can't fill before bar t+1's open.
+            fill_prices = op.shift(-1)
+            fill_realism = "next_open"
+
     # fill_method=None: a missing price gives a NaN (->0) return, never a padded
     # one — so membership gaps / removals don't fabricate carried-forward prices.
-    returns = prices.pct_change(fill_method=None).fillna(0.0)
+    returns = fill_prices.pct_change(fill_method=None).fillna(0.0)
 
     weights = get_sizing(sizing)(signals, returns, lookback)
     if flatten_overnight and len(weights):
@@ -83,5 +101,8 @@ def backtest_portfolio(
         gross_exposure=held.abs().sum(axis=1),
         returns_by_symbol=returns,
         turnover_series=turnover,
-        meta={"sizing": sizing, "cost_bps": cost_bps, "n_symbols": signals.shape[1]},
+        meta={
+            "sizing": sizing, "cost_bps": cost_bps, "n_symbols": signals.shape[1],
+            "fill_realism": fill_realism,
+        },
     )

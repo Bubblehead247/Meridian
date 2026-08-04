@@ -44,17 +44,38 @@ def _slice_universe(
     return out
 
 
+def _slice_universe_bars(
+    bars_by_symbol: dict[str, pd.DataFrame] | None,
+    start: str | None,
+    end: str | None,
+) -> dict[str, pd.DataFrame] | None:
+    """Bars-aware sibling of ``_slice_universe``, for the OOS stage."""
+    if not bars_by_symbol:
+        return None
+    out = {}
+    for sym, b in bars_by_symbol.items():
+        sl = b
+        if start:
+            sl = sl[sl.index >= pd.Timestamp(start)]
+        if end:
+            sl = sl[sl.index <= pd.Timestamp(end)]
+        if len(sl):
+            out[sym] = sl
+    return out or None
+
+
 def run_universe_backtest_stage(
     model,
     prices_by_symbol: dict[str, pd.Series],
     *,
     cost_bps: float = 1.0,
+    bars_by_symbol: dict[str, pd.DataFrame] | None = None,
     regime_frame: pd.DataFrame | None = None,
     periods_per_year: int = 252,
     criteria: GraduationCriteria | None = None,
 ) -> StageResult:
     """Backtest a cross-sectional model over the whole universe → scorecard → pass/fail."""
-    result = model.backtest(prices_by_symbol, cost_bps=cost_bps)
+    result = model.backtest(prices_by_symbol, cost_bps=cost_bps, bars_by_symbol=bars_by_symbol)
     card = scorecard(result.returns, regime_frame=regime_frame, periods_per_year=periods_per_year)
     return StageResult(
         stage="backtest",
@@ -71,13 +92,14 @@ def run_universe_walk_forward_stage(
     *,
     spec: WalkForwardSpec | None = None,
     cost_bps: float = 1.0,
+    bars_by_symbol: dict[str, pd.DataFrame] | None = None,
     regime_frame: pd.DataFrame | None = None,
     periods_per_year: int = 252,
     criteria: GraduationCriteria | None = None,
 ) -> StageResult:
     """Anchored walk-forward of a cross-sectional model: stitch the OOS portfolio returns."""
     spec = spec or WalkForwardSpec()
-    result = model.backtest(prices_by_symbol, cost_bps=cost_bps)
+    result = model.backtest(prices_by_symbol, cost_bps=cost_bps, bars_by_symbol=bars_by_symbol)
     folds = make_folds(len(result.returns), spec)
     if not folds:
         return StageResult("walk_forward", model.name, {}, False, {"n_folds": 0})
@@ -103,6 +125,7 @@ def run_universe_oos_stage(
     *,
     spec=None,
     cost_bps: float = 1.0,
+    bars_by_symbol: dict[str, pd.DataFrame] | None = None,
     regime_frame: pd.DataFrame | None = None,
     periods_per_year: int = 252,
     criteria: GraduationCriteria | None = None,
@@ -120,18 +143,20 @@ def run_universe_oos_stage(
     spec = spec or SplitSpec()
     oos = _slice_universe(prices_by_symbol, *spec.out_of_sample)
     ins = _slice_universe(prices_by_symbol, *spec.in_sample)
+    oos_bars = _slice_universe_bars(bars_by_symbol, *spec.out_of_sample)
+    ins_bars = _slice_universe_bars(bars_by_symbol, *spec.in_sample)
 
     if not oos:
         return StageResult("oos", model.name, {}, False, {"n_oos": 0})
 
-    oos_res = model.backtest(oos, cost_bps=cost_bps)
+    oos_res = model.backtest(oos, cost_bps=cost_bps, bars_by_symbol=oos_bars)
     oos_card = scorecard(
         oos_res.returns, regime_frame=regime_frame, periods_per_year=periods_per_year
     )
 
     comparison = {"degraded": False}
     if ins:
-        is_res = model.backtest(ins, cost_bps=cost_bps)
+        is_res = model.backtest(ins, cost_bps=cost_bps, bars_by_symbol=ins_bars)
         is_card = scorecard(is_res.returns, periods_per_year=periods_per_year)
         comparison = compare_oos_to_is(oos_card, is_card, tolerance=tolerance)
 
@@ -163,6 +188,7 @@ def run_universe_pipeline(
     ledger=None,
     stages: tuple[str, ...] = ("backtest", "walk_forward", "oos"),
     cost_bps: float = 1.0,
+    bars_by_symbol: dict[str, pd.DataFrame] | None = None,
     regime_frame: pd.DataFrame | None = None,
     periods_per_year: int = 252,
     criteria: GraduationCriteria | None = None,
@@ -175,14 +201,16 @@ def run_universe_pipeline(
 
     Mirrors ``run_pipeline`` for single-asset models. Slices the universe dict by
     date for the OOS stage, so a single ``prices_by_symbol`` covering the full
-    history is all that is needed. Returns ``{stage: StageResult}``.
+    history is all that is needed. ``bars_by_symbol`` (optional OHLC per symbol)
+    enables next-open fills — see ``CrossSectionalModel.backtest``. Returns
+    ``{stage: StageResult}``.
     """
     if criteria is None:
         criteria = (
             criteria_for_family(ledger.family) if ledger is not None else GraduationCriteria()
         )
     common = dict(
-        cost_bps=cost_bps, regime_frame=regime_frame,
+        cost_bps=cost_bps, bars_by_symbol=bars_by_symbol, regime_frame=regime_frame,
         periods_per_year=periods_per_year, criteria=criteria,
     )
     results: dict[str, StageResult] = {}
