@@ -19,6 +19,7 @@ from meridian.data.splits import SplitSpec, split
 from meridian.families.base import Model
 from meridian.pipeline.backtest import StageResult
 from meridian.pipeline.graduation import GraduationCriteria, passes_metric_bar
+from meridian.pipeline.oos_guard import OOSGuard
 from meridian.scoring import scorecard_from_backtest
 
 
@@ -50,11 +51,19 @@ def run_oos_stage(
     periods_per_year: int = 252,
     criteria: GraduationCriteria | None = None,
     tolerance: float = 0.5,
+    guard: OOSGuard | None = None,
+    symbol: str | None = None,
 ) -> StageResult:
     """Run ``model`` on the fixed OOS holdout → scorecard → pass/fail (the ``oos`` gate).
 
     Passes only if the OOS scorecard clears the metric bar AND its profile has not degraded
     relative to in-sample.
+
+    When ``guard`` is supplied, each call increments a persisted run counter for
+    (``model.family``, ``model.name``, ``symbol``) and stamps the resulting count on
+    ``detail["oos_run_count"]`` — a count above 1 means this "final" OOS pass followed
+    one or more prior attempts against the same holdout (see ``pipeline/oos_guard.py``).
+    Non-blocking: a repeated run still executes and returns normally, just visibly flagged.
     """
     spec = spec or SplitSpec()
     parts = split(prices, spec)
@@ -83,10 +92,14 @@ def run_oos_stage(
         else GraduationCriteria(min_periods=0)
     )
     passed = passes_metric_bar(oos_card, oos_criteria) and not comparison["degraded"]
+    detail: dict = {"n_oos": int(len(oos)), **comparison}
+    if guard is not None:
+        run_rec = guard.record_run(model.family or "unknown", model.name or "unknown", symbol or "unknown")
+        detail["oos_run_count"] = run_rec.run_count
     return StageResult(
         stage="oos",
         model=model.name,
         scorecard=oos_card,
         passed=passed,
-        detail={"n_oos": int(len(oos)), **comparison},
+        detail=detail,
     )

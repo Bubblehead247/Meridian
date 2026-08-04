@@ -84,6 +84,7 @@ def run_fund(
     """
     ledgers = seed_ledgers(equity)
     scorecards: dict[str, dict] = {}
+    sleeve_returns: dict[str, pd.Series] = {}
     for led in ledgers:
         model_name = _best_single_asset(led.family, symbol)
         if model_name is None:
@@ -94,10 +95,18 @@ def run_fund(
             regime_frame=regime_frame,
         )
         scorecards[led.name] = list(results.values())[-1].scorecard
+        # Same backtest run_pipeline's backtest stage already performed; kept here
+        # purely for its return series, which StageResult doesn't carry — that
+        # series is what makes inter-sleeve correlation (below) real instead of
+        # silently empty.
+        sleeve_returns[led.name] = model.backtest(
+            prices, cost_bps=cost_bps, bars=bars, regime_frame=regime_frame
+        ).returns
 
     current_regime = _current_regime(regime_frame)
     review = run_monthly_review(
         ledgers, scorecards, account_equity=equity, current_regime=current_regime,
+        sleeve_returns=sleeve_returns,
     )
     return ledgers, review
 
@@ -119,6 +128,7 @@ def run_cs_fund(
 
     ledgers = seed_ledgers(equity)
     scorecards: dict[str, dict] = {}
+    sleeve_returns: dict[str, pd.Series] = {}
     for led in ledgers:
         cs_name = _first_cs_model(led.family)
         if cs_name is None:
@@ -130,8 +140,10 @@ def run_cs_fund(
         )
         if results:
             scorecards[led.name] = list(results.values())[-1].scorecard
+            sleeve_returns[led.name] = model.backtest(prices_by_symbol, cost_bps=cost_bps).returns
     current_regime = _current_regime(regime_frame)
     review = run_monthly_review(
         ledgers, scorecards, account_equity=equity, current_regime=current_regime,
+        sleeve_returns=sleeve_returns,
     )
     return ledgers, review

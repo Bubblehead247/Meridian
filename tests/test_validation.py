@@ -12,6 +12,7 @@ from meridian.validation import (
     benjamini_hochberg,
     block_bootstrap_sharpe,
     bonferroni,
+    correct,
     make_folds,
     monte_carlo_pvalue,
     validate,
@@ -164,6 +165,31 @@ def test_bonferroni_threshold_and_adjusted():
     assert res["alpha_adj"] == pytest.approx(0.01)
     assert list(res["reject"]) == [True, False, False, False, False]
     assert res["adjusted"][0] == pytest.approx(0.05)
+
+
+def test_bonferroni_m_eff_relaxes_the_threshold():
+    p = [0.01, 0.02, 0.03, 0.50, 0.51]
+    raw = bonferroni(p, alpha=0.05)               # m=5 -> alpha_adj=0.01
+    eff = bonferroni(p, alpha=0.05, m_eff=2.0)     # collinearity-adjusted -> less strict
+    assert eff["alpha_adj"] == pytest.approx(0.025)
+    assert eff["alpha_adj"] > raw["alpha_adj"]
+    assert list(eff["reject"]) == [True, True, False, False, False]
+
+
+def test_benjamini_hochberg_m_eff_relaxes_rejection_set():
+    p = [0.01, 0.02, 0.03, 0.50, 0.51]
+    raw = benjamini_hochberg(p, alpha=0.05)
+    eff = benjamini_hochberg(p, alpha=0.05, m_eff=2.0)
+    assert sum(eff["reject"]) >= sum(raw["reject"])
+    assert (eff["qvalues"] <= raw["qvalues"]).all()  # smaller denom -> smaller q-values
+
+
+def test_correct_forwards_m_eff_to_both_methods():
+    p = [0.01, 0.02, 0.03, 0.50, 0.51]
+    bh = correct(p, method="bh", m_eff=2.0)
+    bonf = correct(p, method="bonferroni", m_eff=2.0)
+    assert bh["qvalues"][0] == pytest.approx(benjamini_hochberg(p, m_eff=2.0)["qvalues"][0])
+    assert bonf["alpha_adj"] == pytest.approx(bonferroni(p, m_eff=2.0)["alpha_adj"])
 
 
 def test_strategy_net_matches_manual():

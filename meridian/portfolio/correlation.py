@@ -11,6 +11,7 @@ concentration). All correlations are Pearson on the sleeves' common calendar.
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from meridian.portfolio.ledger import StrategyLedger
@@ -38,14 +39,21 @@ def pairwise_correlations(name: str, matrix: pd.DataFrame) -> dict[str, float]:
 def average_correlation(matrix: pd.DataFrame) -> float:
     """Mean of the off-diagonal correlations — a single diversification gauge.
 
-    Lower is better-diversified. NaN for a 0/1-sleeve matrix (no pairs).
+    Lower is better-diversified. NaN for a 0/1-sleeve matrix (no pairs), or when
+    every off-diagonal pair is itself NaN (e.g. every sleeve but one is a
+    zero-variance/no-trade return series, which Pearson correlation can't score).
+    Uses a NaN-aware mean so *one* degenerate (flat) sleeve doesn't silently
+    poison the average for every other, genuinely-correlated pair — a plain sum
+    would, since any NaN in the matrix propagates through it.
     """
     if matrix.shape[0] < 2:
         return float("nan")
     m = matrix.to_numpy(dtype=float)
     n = m.shape[0]
-    off = (m.sum() - n) / (n * n - n)   # subtract the n diagonal 1.0s
-    return float(off)
+    off_diagonal = m[~np.eye(n, dtype=bool)]
+    if np.all(np.isnan(off_diagonal)):
+        return float("nan")
+    return float(np.nanmean(off_diagonal))
 
 
 def flag_high_correlation(

@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from meridian.portfolio.allocation import SLEEVE_ALLOCATIONS
+from meridian.portfolio.allocation import FAMILY_TO_SLEEVE, SLEEVE_ALLOCATIONS
 from meridian.portfolio.ledger import STAGES, StrategyLedger
 
 #: Live-capital range (fraction of equity) per stage — policy table (PLAN.md §6).
@@ -57,9 +57,19 @@ FAMILY_CRITERIA: dict[str, GraduationCriteria] = {
 
 
 def criteria_for_family(family: str | None) -> GraduationCriteria:
-    """Return the graduation criteria for ``family``, falling back to the global default."""
-    if family and family in FAMILY_CRITERIA:
-        return FAMILY_CRITERIA[family]
+    """Return the graduation criteria for ``family``, falling back to the global default.
+
+    Resolves through ``FAMILY_TO_SLEEVE`` first: a family that shares a sleeve with
+    another (e.g. ``breakouts`` -> ``trend_following``, ``volatility`` ->
+    ``experimental_research``) is keyed by *sleeve* name in ``FAMILY_CRITERIA``, not
+    its own family name, since that's what determines its allocation weight and
+    portfolio drawdown-contribution limit.
+    """
+    if not family:
+        return GraduationCriteria()
+    sleeve = FAMILY_TO_SLEEVE.get(family, family)
+    if sleeve in FAMILY_CRITERIA:
+        return FAMILY_CRITERIA[sleeve]
     return GraduationCriteria()
 
 

@@ -20,6 +20,7 @@ from meridian.config import load_config
 from meridian.estimators import list_estimators
 from meridian.execution.broker import AlpacaBroker, SimulatedBroker
 from meridian.execution.trader import PaperTrader
+from meridian.experiments.run_log import append_run, new_run_record
 from meridian.signals import SignalConfig
 from meridian.validation import WalkForwardSpec, validate
 
@@ -130,6 +131,7 @@ def run_validation(cfg: dict, prices: pd.Series, bars: pd.DataFrame | None = Non
         n_mc=int(v.get("n_mc", 2000)),
         method=v.get("correction", "bh"),
         seed=int(cfg.get("experiment", {}).get("seed", 0)),
+        sensitivity=bool(v.get("sensitivity", False)),
     )
 
 
@@ -152,6 +154,15 @@ def run_validation_report(
     md = build_validation_report(table, meta)
     out = cfg.get("report", {}).get("path", "reports/validation.md")
     write_report(out, md)
+    sig = table[table["significant"]]["estimator"].tolist() if "significant" in table.columns else []
+    append_run(new_run_record(
+        config_path=cfg.get("_source_path", "?"),
+        raw_config_text=cfg.get("_source_text"),
+        kind="validation",
+        meta=meta,
+        report_path=out,
+        summary={"n_tested": len(table), "n_significant": len(sig), "significant": sig},
+    ), path=Path(out).parent / "run_log.jsonl")
     return table, out
 
 
@@ -189,6 +200,22 @@ def run_paper_dry_run(
         "equity": broker.equity() if hasattr(broker, "equity") else None,
     }
     return log, summary
+
+
+def is_survivorship_biased(cfg: dict) -> bool:
+    """Whether the universe ``load_universe_prices`` would resolve is survivorship-biased.
+
+    True for the default yfinance/Wikipedia path (always — see
+    ``data/universe.py``'s docstring). True even for ``data.source ==
+    "survivorship"`` when ``variant == "survivor"``, since that variant is
+    itself the biased end-of-period baseline used for bias-quantification, not
+    a bias-free universe. Only ``source: survivorship`` with the default
+    ``variant: free`` is genuinely point-in-time.
+    """
+    data = cfg.get("data", {})
+    if data.get("source") != "survivorship":
+        return True
+    return data.get("variant", "free") == "survivor"
 
 
 def load_universe_prices(cfg: dict, cache=None) -> tuple[dict, dict]:
@@ -280,15 +307,37 @@ def run_universe_validation_report(
         "cost_bps": cfg.get("cost_bps", 1.0),
         "wfo": build_wfo(cfg).mode,
         "correction": cfg.get("validation", {}).get("correction", "bh"),
+        "survivorship_biased": is_survivorship_biased(cfg),
     }
     md = build_validation_report(
         table, meta, title="Meridian — Universe-Wide Mean-Reversion Validation"
     )
     out = cfg.get("report", {}).get("path", "reports/universe_validation.md")
     write_report(out, md)
+    sig = table[table["significant"]]["estimator"].tolist() if "significant" in table.columns else []
+    append_run(new_run_record(
+        config_path=cfg.get("_source_path", "?"),
+        raw_config_text=cfg.get("_source_text"),
+        kind="universe_validation",
+        meta=meta,
+        report_path=out,
+        summary={"n_tested": len(table), "n_significant": len(sig), "significant": sig},
+    ), path=Path(out).parent / "run_log.jsonl")
     return table, out
 
 
 def load_experiment(path: str | Path) -> dict:
-    """Load a YAML experiment config (thin wrapper over `config.load_config`)."""
-    return load_config(path)
+    """Load a YAML experiment config (thin wrapper over `config.load_config`).
+
+    Stashes the source path and raw text under ``_source_path``/``_source_text``
+    so downstream report/run-log writers can record exactly what was loaded,
+    without changing every function's signature to thread a path through.
+    """
+    cfg = load_config(path)
+    p = Path(path)
+    cfg["_source_path"] = str(p)
+    try:
+        cfg["_source_text"] = p.read_text(encoding="utf-8")
+    except OSError:
+        cfg["_source_text"] = None
+    return cfg

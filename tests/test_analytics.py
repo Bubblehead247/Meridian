@@ -105,3 +105,62 @@ def test_write_report_creates_file(tmp_path):
     p = write_report(tmp_path / "sub" / "report.md", md)
     assert p.exists()
     assert "Meridian" in p.read_text(encoding="utf-8")
+
+
+# --- survivorship-bias banner ----------------------------------------------
+
+def test_no_banner_when_flag_absent_from_meta():
+    md = build_validation_report(_fake_table(), meta={"symbols": "SPY"})
+    assert "Survivorship-biased run" not in md
+    assert "Point-in-time universe" not in md
+
+
+def test_banner_flags_biased_run():
+    md = build_validation_report(_fake_table(), meta={"survivorship_biased": True})
+    assert "Survivorship-biased run" in md
+
+
+def test_banner_flags_point_in_time_run():
+    md = build_validation_report(_fake_table(), meta={"survivorship_biased": False})
+    assert "Point-in-time universe" in md
+
+
+# --- robustness section (Phase 2: m_eff, DSR, sensitivity) -----------------
+
+def _phase2_table(flip_significance=False, unstable=False) -> pd.DataFrame:
+    df = _fake_table(significant=False)
+    df["m_eff"] = 1.8
+    df["dsr_pvalue"] = [0.6, 0.4, 0.2]
+    df["significant_eff"] = [flip_significance, False, False]
+    df["sharpe_sign_stable"] = [not unstable, True, True]
+    return df
+
+
+def test_no_robustness_section_when_columns_absent():
+    md = build_validation_report(_fake_table())
+    assert "## Robustness" not in md
+
+
+def test_robustness_section_present_with_no_flips():
+    md = build_validation_report(_phase2_table())
+    assert "## Robustness" in md
+    assert "m_eff=1.800" in md
+    assert "No estimator's significance flips" in md
+    assert "every estimator's OOS Sharpe sign is" in md
+
+
+def test_robustness_section_flags_significance_flip():
+    md = build_validation_report(_phase2_table(flip_significance=True))
+    assert "only clear the bar under the effective-m correction" in md
+    assert "`hull`" in md  # the flipped estimator is named
+
+
+def test_robustness_section_flags_unstable_sensitivity():
+    md = build_validation_report(_phase2_table(unstable=True))
+    assert "flip sign across neighboring windows" in md
+
+
+def test_robustness_section_shows_dsr_for_best_performer():
+    md = build_validation_report(_phase2_table())
+    assert "Deflated Sharpe Ratio" in md
+    assert "dsr_pvalue=0.600" in md

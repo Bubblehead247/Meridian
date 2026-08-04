@@ -15,6 +15,7 @@ from meridian.signals.backtest import (
     sweep,
 )
 from meridian.signals.engine import SignalConfig, SignalState, generate_positions
+from meridian.signals.stop_diagnostics import flag_intrabar_stop_breaches
 
 __all__ = [
     "SignalConfig",
@@ -25,4 +26,5 @@ __all__ = [
     "compute_scores",
     "run_backtest",
     "sweep",
+    "flag_intrabar_stop_breaches",
 ]

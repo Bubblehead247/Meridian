@@ -58,6 +58,21 @@ def test_resolve_symbols_explicit_list():
     assert runner.resolve_symbols({"data": {"symbol": "SPY"}}) == ["SPY"]
 
 
+def test_is_survivorship_biased_default_path_is_biased():
+    assert runner.is_survivorship_biased({}) is True
+    assert runner.is_survivorship_biased({"data": {"symbols": ["SPY"]}}) is True
+
+
+def test_is_survivorship_biased_free_variant_is_not_biased():
+    cfg = {"data": {"source": "survivorship", "root": "x"}}
+    assert runner.is_survivorship_biased(cfg) is False
+
+
+def test_is_survivorship_biased_survivor_variant_is_still_biased():
+    cfg = {"data": {"source": "survivorship", "variant": "survivor", "root": "x"}}
+    assert runner.is_survivorship_biased(cfg) is True
+
+
 class _FakeScreener:
     def __init__(self):
         self.calls = []
@@ -148,6 +163,42 @@ def test_cli_validate(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "Significant after correction" in out
     assert (tmp_path / "r.md").exists()
+    assert (tmp_path / "run_log.jsonl").exists()
+
+
+def test_run_validation_report_appends_not_overwrites(tmp_path):
+    px = _mr()
+    cfg = _cfg(tmp_path)
+    runner.run_validation_report(cfg, px, _bars(px))
+    runner.run_validation_report(cfg, px, _bars(px))
+    lines = (tmp_path / "run_log.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+    assert (tmp_path / "r.md").exists()  # report itself is still overwritten each run
+
+
+def test_run_log_handles_non_json_native_meta_values(tmp_path):
+    """YAML dates parse as datetime.date (e.g. `start: 2010-01-01` unquoted); must not crash."""
+    import datetime
+
+    from meridian.experiments.run_log import append_run, new_run_record, read_runs
+
+    rec = new_run_record(
+        config_path="c.yaml", raw_config_text="x: 1", kind="validation",
+        meta={"start": datetime.date(2010, 1, 1), "symbols": ["SPY"]},
+        report_path="r.md", summary={"n_tested": 1, "n_significant": 0},
+    )
+    log_path = tmp_path / "run_log.jsonl"
+    append_run(rec, path=log_path)
+    runs = read_runs(log_path)
+    assert len(runs) == 1
+    assert runs[0].meta["start"] == "2010-01-01"
+
+
+def test_cli_list_runs_empty(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    rc = main(["list", "runs"])
+    assert rc == 0
+    assert "No logged runs" in capsys.readouterr().out
 
 
 def _universe(k=5, n=600) -> dict:

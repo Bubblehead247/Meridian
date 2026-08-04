@@ -15,6 +15,7 @@ from meridian.pipeline.graduation import (
     passes_metric_bar,
 )
 from meridian.pipeline.oos import compare_oos_to_is, run_oos_stage
+from meridian.pipeline.oos_guard import OOSGuard, OOSRunRecord
 from meridian.pipeline.orchestrator import run_cross_sectional_pipeline, run_pipeline
 from meridian.pipeline.records import (
     DEFAULT_RECORDS_DIR,
@@ -78,6 +79,8 @@ __all__ = [
     "run_walk_forward_stage",
     "run_oos_stage",
     "compare_oos_to_is",
+    "OOSGuard",
+    "OOSRunRecord",
     "run_stage",
     "STAGE_RUNNERS",
     "run_pipeline",

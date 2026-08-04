@@ -73,6 +73,29 @@ def _cmd_paper(args) -> int:
 
 
 def _cmd_list(args) -> int:
+    if args.kind == "runs":
+        from meridian.experiments.run_log import read_runs
+
+        runs = read_runs()
+        if not runs:
+            print("No logged runs found (run 'meridian validate <config>' first).")
+            return 0
+        print(
+            f"{'#':>3}  {'timestamp':<20}  {'kind':<18}  {'config':<28}  "
+            f"{'sig/tested':<10}  {'git':<8}  report"
+        )
+        print("-" * 110)
+        for i, r in enumerate(runs, 1):
+            n_sig = r.summary.get("n_significant", "?")
+            n_tested = r.summary.get("n_tested", "?")
+            git = (r.git_sha or "")[:8] or "n/a"
+            print(
+                f"{i:>3}  {r.timestamp[:19]:<20}  {r.kind:<18}  "
+                f"{Path(r.config_path).name:<28}  {f'{n_sig}/{n_tested}':<10}  "
+                f"{git:<8}  {r.report_path}"
+            )
+        return 0
+
     if args.kind == "saved":
         from meridian.pipeline import load_records
         records = load_records()
@@ -601,7 +624,9 @@ def build_parser() -> argparse.ArgumentParser:
         p.set_defaults(func=fn)
 
     pl = sub.add_parser("list", help="List available estimators/deviations/regimes/models")
-    pl.add_argument("kind", choices=["estimators", "deviations", "regimes", "models", "saved"])
+    pl.add_argument(
+        "kind", choices=["estimators", "deviations", "regimes", "models", "saved", "runs"]
+    )
     pl.set_defaults(func=_cmd_list)
 
     pp = sub.add_parser(

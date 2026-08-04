@@ -70,23 +70,44 @@ def backtest(
     prices: pd.Series,
     positions: pd.Series,
     cost_bps: float = 1.0,
+    bars: pd.DataFrame | None = None,
+    stop_diagnostics: bool = False,
 ) -> BacktestResult:
     """Run a single-asset backtest of a position path against prices.
 
     Args:
-        prices: Price series (use adjusted close).
+        prices: Price series (use adjusted close). Used to decide positions;
+            NOT used to fill them when ``bars`` supplies an ``open`` column.
         positions: Desired position at each bar's close, {-1, 0, +1}.
         cost_bps: Flat transaction cost in basis points of traded notional,
             charged on every change in held position. (Real slippage varies;
             this is the documented flat-bps approximation.)
+        bars: Optional OHLC frame aligned to ``prices``. When it has an
+            ``open`` column, fills use the *next* bar's open — the earliest
+            price actually reachable by an order placed after seeing the bar
+            that produced the signal. Without it, fills fall back to the same
+            close the signal was computed from (unrealistic; flagged via
+            ``meta["fill_realism"]``).
+        stop_diagnostics: When True and ``bars`` has ``high``/``low`` columns,
+            adds ``intrabar_stop_breach``/``bars_late`` columns to the trade
+            ledger (see ``signals/stop_diagnostics.py``) — a diagnostic only,
+            never changes fills, sizing, or the returned P&L. Off by default.
 
     Returns:
         A populated :class:`BacktestResult`.
     """
     prices = prices.astype(float)
-    ret = prices.pct_change().fillna(0.0)
 
-    # Lag positions one bar: the position decided at t earns the t->t+1 return.
+    fill_realism = "close_approx"
+    fill_prices = prices
+    if bars is not None and "open" in bars.columns:
+        # The bar t decision (from close t) can't fill before bar t+1's open.
+        fill_prices = bars["open"].reindex(prices.index).astype(float).shift(-1)
+        fill_realism = "next_open"
+
+    ret = fill_prices.pct_change(fill_method=None).fillna(0.0)
+
+    # Lag positions one bar: the position decided at t earns the t->t+1 fill-to-fill return.
     held = positions.shift(1).fillna(0).astype(float)
 
     gross = held * ret
@@ -95,7 +116,11 @@ def backtest(
     net = gross - cost
 
     equity = (1.0 + net).cumprod()
-    trades = _extract_trades(prices, held, net)
+    trades = _extract_trades(fill_prices, held, net)
+    if stop_diagnostics and bars is not None:
+        from meridian.signals.stop_diagnostics import flag_intrabar_stop_breaches
+
+        trades = flag_intrabar_stop_breaches(trades, bars)
 
     return BacktestResult(
         equity=equity,
@@ -103,7 +128,7 @@ def backtest(
         gross_returns=gross,
         positions=held,
         trades=trades,
-        meta={"cost_bps": cost_bps},
+        meta={"cost_bps": cost_bps, "fill_realism": fill_realism},
     )
 
 
@@ -201,7 +226,7 @@ def run_backtest(
     """
     scores = compute_scores(prices, estimator, deviation, window=window, bars=bars)
     positions = generate_positions(scores, signal)
-    result = backtest(prices, positions, cost_bps=cost_bps)
+    result = backtest(prices, positions, cost_bps=cost_bps, bars=bars)
     result.meta.update({"estimator": estimator, "deviation": deviation, "window": window})
     return result
 

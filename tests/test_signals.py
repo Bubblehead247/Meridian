@@ -117,6 +117,50 @@ def test_trade_ledger_records_a_round_trip():
     assert t["return"] > 0
 
 
+# --- fill realism (no bars = close approx; bars w/ open = next-open fill) --
+
+def test_no_bars_falls_back_to_close_approx_and_is_flagged():
+    prices = pd.Series([100.0, 101.0, 102.0])
+    res = backtest(prices, pd.Series([1, 1, 1]), cost_bps=0.0)
+    assert res.meta["fill_realism"] == "close_approx"
+
+
+def test_bars_without_open_column_falls_back_to_close_approx():
+    prices = pd.Series([100.0, 101.0, 102.0])
+    bars = pd.DataFrame({"high": prices + 1, "low": prices - 1}, index=prices.index)
+    res = backtest(prices, pd.Series([1, 1, 1]), cost_bps=0.0, bars=bars)
+    assert res.meta["fill_realism"] == "close_approx"
+
+
+def test_bars_with_open_uses_next_open_fill_and_is_flagged():
+    # Position decided at bar t (from close) fills at bar t+1's open.
+    prices = pd.Series([100.0, 101.0, 102.0, 103.0])
+    bars = pd.DataFrame(
+        {"open": [100.0, 105.0, 110.0, 115.0]}, index=prices.index
+    )
+    positions = pd.Series([1, 1, 1, 1])
+    res = backtest(prices, positions, cost_bps=0.0, bars=bars)
+    assert res.meta["fill_realism"] == "next_open"
+    # held = positions.shift(1) = [0,1,1,1]; fill_prices = open.shift(-1) = [105,110,115,NaN]
+    # ret[1] = 110/105-1, ret[2] = 115/110-1, ret[3] = NaN -> filled 0
+    exec_price = bars["open"].shift(-1)
+    expected_ret2 = exec_price.iloc[2] / exec_price.iloc[1] - 1
+    assert res.returns.iloc[2] == pytest.approx(expected_ret2)
+    assert res.returns.iloc[3] == pytest.approx(0.0)
+
+
+def test_next_open_fill_differs_from_close_approx_on_a_gap():
+    # A gap between close and next open should change the measured return
+    # under next-open fills but not under the close-approx fallback.
+    prices = pd.Series([100.0, 100.0, 100.0])
+    bars = pd.DataFrame({"open": [100.0, 105.0, 110.0]}, index=prices.index)
+    positions = pd.Series([1, 1, 1])
+    close_approx = backtest(prices, positions, cost_bps=0.0)
+    next_open = backtest(prices, positions, cost_bps=0.0, bars=bars)
+    assert close_approx.equity.iloc[-1] == pytest.approx(1.0)  # flat close series
+    assert next_open.equity.iloc[-1] != pytest.approx(1.0)  # gap is captured
+
+
 # --- end-to-end pipeline --------------------------------------------------
 
 def _mean_reverting(n=500, seed=0) -> pd.Series:

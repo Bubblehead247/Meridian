@@ -8,8 +8,16 @@ significance-tested results.
 
 from meridian.validation.bootstrap import block_bootstrap_sharpe
 from meridian.validation.correction import benjamini_hochberg, bonferroni, correct
+from meridian.validation.deflated_sharpe import (
+    deflated_sharpe_ratio,
+    expected_max_sharpe,
+    probabilistic_sharpe_ratio,
+    sharpe_ratio_stdev,
+)
+from meridian.validation.effective_tests import effective_num_tests
 from meridian.validation.montecarlo import monte_carlo_pvalue
 from meridian.validation.pipeline import validate
+from meridian.validation.sensitivity import parameter_sensitivity
 from meridian.validation.stats import sharpe, strategy_net, total_return
 from meridian.validation.walkforward import (
     Fold,
@@ -36,4 +44,10 @@ __all__ = [
     "sharpe",
     "total_return",
     "strategy_net",
+    "sharpe_ratio_stdev",
+    "probabilistic_sharpe_ratio",
+    "expected_max_sharpe",
+    "deflated_sharpe_ratio",
+    "effective_num_tests",
+    "parameter_sensitivity",
 ]

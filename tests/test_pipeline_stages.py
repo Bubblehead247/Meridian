@@ -8,16 +8,20 @@ import pytest
 
 from meridian.families import create_model
 from meridian.pipeline import (
+    OOSGuard,
     StageResult,
     advance,
     compare_oos_to_is,
+    criteria_for_family,
     passes_metric_bar,
     run_backtest_stage,
     run_oos_stage,
+    run_pipeline,
     run_stage,
     run_walk_forward_stage,
 )
 from meridian.portfolio import StrategyLedger
+from meridian.portfolio.allocation import SLEEVE_ALLOCATIONS
 from meridian.validation import WalkForwardSpec
 
 
@@ -73,11 +77,70 @@ def test_oos_stage_runs_on_holdout_window():
     assert "degraded" in res.detail and isinstance(res.passed, bool)
 
 
+def test_oos_stage_without_guard_has_no_run_count():
+    prices = _prices(n=3200, start="2010-01-01")
+    res = run_oos_stage(_model(), prices)
+    assert "oos_run_count" not in res.detail
+
+
+def test_oos_guard_counts_repeated_runs(tmp_path):
+    guard = OOSGuard(root=tmp_path / "oos_runs")
+    prices = _prices(n=3200, start="2010-01-01")
+    res1 = run_oos_stage(_model(), prices, guard=guard, symbol="SPY")
+    res2 = run_oos_stage(_model(), prices, guard=guard, symbol="SPY")
+    assert res1.detail["oos_run_count"] == 1
+    assert res2.detail["oos_run_count"] == 2
+
+
+def test_oos_guard_keys_are_isolated_by_symbol(tmp_path):
+    guard = OOSGuard(root=tmp_path / "oos_runs")
+    prices = _prices(n=3200, start="2010-01-01")
+    run_oos_stage(_model(), prices, guard=guard, symbol="SPY")
+    res = run_oos_stage(_model(), prices, guard=guard, symbol="QQQ")
+    assert res.detail["oos_run_count"] == 1  # different symbol, fresh counter
+
+
+def test_run_pipeline_forwards_guard_to_oos_stage(tmp_path):
+    guard = OOSGuard(root=tmp_path / "oos_runs")
+    prices = _prices(n=3200, start="2010-01-01")
+    results = run_pipeline(
+        _model(), prices, stages=("oos",), stop_on_fail=False,
+        oos_guard=guard, symbol="SPY",
+    )
+    assert results["oos"].detail["oos_run_count"] == 1
+    results2 = run_pipeline(
+        _model(), prices, stages=("oos",), stop_on_fail=False,
+        oos_guard=guard, symbol="SPY",
+    )
+    assert results2["oos"].detail["oos_run_count"] == 2
+
+
 def test_compare_oos_to_is_flags_degradation():
     assert compare_oos_to_is({"sharpe": 0.1}, {"sharpe": 1.0})["degraded"] is True
     assert compare_oos_to_is({"sharpe": 0.9}, {"sharpe": 1.0})["degraded"] is False
     # no in-sample edge to degrade from
     assert compare_oos_to_is({"sharpe": -0.5}, {"sharpe": -0.2})["degraded"] is False
+
+
+# --- graduation criteria: family/sleeve key resolution --------------------
+
+def test_criteria_for_family_direct_key_match():
+    crit = criteria_for_family("mean_reversion")
+    assert crit.allocation_weight == SLEEVE_ALLOCATIONS["mean_reversion"]
+
+
+def test_criteria_for_family_remapped_families_get_their_sleeve_criteria():
+    # breakouts funds off the trend_following sleeve, not its own "breakouts" name
+    breakouts = criteria_for_family("breakouts")
+    assert breakouts.allocation_weight == SLEEVE_ALLOCATIONS["trend_following"]
+    # volatility funds off the experimental_research sleeve
+    volatility = criteria_for_family("volatility")
+    assert volatility.allocation_weight == SLEEVE_ALLOCATIONS["experimental_research"]
+
+
+def test_criteria_for_family_unknown_falls_back_to_default():
+    crit = criteria_for_family("not_a_real_family")
+    assert crit.allocation_weight is None
 
 
 # --- metric gate + dispatcher + graduation integration --------------------

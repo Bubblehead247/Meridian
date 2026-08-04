@@ -24,6 +24,7 @@ from meridian.pipeline.graduation import (
     passes_metric_bar,
 )
 from meridian.pipeline.oos import compare_oos_to_is, run_oos_stage
+from meridian.pipeline.oos_guard import OOSGuard
 from meridian.pipeline.walk_forward import run_walk_forward_stage
 from meridian.portfolio.ledger import StrategyLedger
 
@@ -45,13 +46,16 @@ def run_pipeline(
     oos_spec=None,
     as_of: str | None = None,
     stop_on_fail: bool = True,
+    oos_guard: OOSGuard | None = None,
+    symbol: str | None = None,
 ) -> dict[str, StageResult]:
     """Walk ``model`` through ``stages`` in order; advance ``ledger`` from each scorecard.
 
     Returns ``{stage: StageResult}``. When a ``ledger`` is given, each stage's scorecard is
     fed to ``graduation.advance`` (the resulting action is stored on the StageResult's
     ``detail['ledger_action']``). With ``stop_on_fail`` the walk halts at the first stage
-    that does not clear the metric bar.
+    that does not clear the metric bar. ``oos_guard``/``symbol`` are forwarded to the OOS
+    stage's run-counter (see ``pipeline/oos_guard.py``); both optional and non-blocking.
     """
     if criteria is None:
         criteria = (
@@ -64,7 +68,10 @@ def run_pipeline(
     runners = {
         "backtest": (run_backtest_stage, {}),
         "walk_forward": (run_walk_forward_stage, {"spec": wf_spec} if wf_spec else {}),
-        "oos": (run_oos_stage, {"spec": oos_spec} if oos_spec else {}),
+        "oos": (
+            run_oos_stage,
+            {**({"spec": oos_spec} if oos_spec else {}), "guard": oos_guard, "symbol": symbol},
+        ),
     }
 
     results: dict[str, StageResult] = {}

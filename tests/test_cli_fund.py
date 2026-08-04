@@ -97,6 +97,41 @@ def test_cs_fund_runs_and_produces_monthly_review(monkeypatch):
     assert "momentum" in sleeve_names or "sector_rotation" in sleeve_names
 
 
+def test_fund_populates_sleeve_correlation():
+    """run_fund wires real sleeve return series into the monthly review's correlation block."""
+    from meridian.experiments.fund import run_fund
+
+    frame = _frame(n=1200)
+    prices = frame["close"]
+    ledgers, review = run_fund(prices, frame, equity=100_000.0)
+
+    # Multiple sleeves run real single-asset models on the same series -> at least
+    # one correlation pair should be computable, so avg_correlation is no longer nan.
+    assert review.avg_correlation == review.avg_correlation  # not NaN
+
+
+def test_cs_fund_populates_sleeve_correlation():
+    """run_cs_fund also wires sleeve_returns when >=2 CS families run."""
+    from meridian.experiments.fund import run_cs_fund
+
+    n = 1600
+    idx = pd.date_range("2010-01-01", periods=n, freq="B")
+
+    def _make_series(drift):
+        rng = np.random.default_rng(7)
+        return pd.Series(100 * np.exp(np.cumsum(rng.normal(drift, 0.01, n))), index=idx)
+
+    basket = {s: _make_series(d) for s, d in zip(
+        ["XLK", "XLF", "XLE", "XLY", "XLV", "XLI"],
+        [0.0006, 0.0003, 0.0, -0.0002, 0.0004, 0.0001],
+        strict=True,
+    )}
+    ledgers, review = run_cs_fund(basket, equity=100_000.0)
+    n_cs = sum(1 for s in review.sleeves if s.sleeve in ("momentum", "sector_rotation"))
+    if n_cs >= 2:
+        assert review.avg_correlation == review.avg_correlation  # not NaN
+
+
 def test_fund_universe_expands_to_symbols(monkeypatch, tmp_path):
     from meridian.data import universe as universe_mod
 

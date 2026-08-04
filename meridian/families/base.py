@@ -56,7 +56,7 @@ class Model(ABC):
         if regime_frame is not None and self.family is not None:
             from meridian.families.permissions import gate_positions
             positions = gate_positions(positions, self.family, regime_frame)
-        result = backtest(prices, positions, cost_bps=cost_bps)
+        result = backtest(prices, positions, cost_bps=cost_bps, bars=bars)
         result.meta.update({"family": self.family, "model": self.name})
         return result
 

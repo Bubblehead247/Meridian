@@ -29,6 +29,7 @@ reports/*.html
 reports/*.md
 reports/*.png
 reports/*.svg
+reports/run_log.jsonl
 # ...except these committed example reports.
 !reports/universe_screened.md
 !reports/universe_validation.md

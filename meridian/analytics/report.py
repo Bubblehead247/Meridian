@@ -70,6 +70,24 @@ def build_validation_report(
 
     parts: list[str] = [f"# {title}", "", f"_Generated {date.today().isoformat()}_", ""]
 
+    # Survivorship-bias banner — dynamic, not just the boilerplate disclosure below,
+    # so a reader can't miss which universe-resolution path actually produced this run.
+    if "survivorship_biased" in meta:
+        if meta["survivorship_biased"]:
+            parts.append(
+                "> **⚠ Survivorship-biased run.** This universe was resolved from "
+                "current constituents/available tickers, not a point-in-time "
+                "membership list. Results are likely optimistic; do not treat this "
+                "run alone as evidence of edge."
+            )
+        else:
+            parts.append(
+                "> **✓ Point-in-time universe.** This run used the survivorship-free "
+                "constituent dataset (`data/survivorship.py`) — membership is gated "
+                "to each date, including names later delisted."
+            )
+        parts.append("")
+
     # Setup / configuration
     if meta:
         parts.append("## Setup")
@@ -105,8 +123,75 @@ def build_validation_report(
     parts.append(_table_md(table))
     parts.append("")
 
+    _append_robustness_section(parts, table)
+
     parts.append(_DISCLOSURES)
     return "\n".join(parts)
+
+
+def _append_robustness_section(parts: list[str], table: pd.DataFrame) -> None:
+    """Phase 2 additions: collinearity-adjusted correction, DSR, sensitivity.
+
+    Purely additive to the report — never changes the headline ``## Verdict``
+    section above, which stays keyed to the raw-m ``significant`` column.
+    """
+    has_eff = "m_eff" in table.columns and "significant_eff" in table.columns
+    has_dsr = "dsr_pvalue" in table.columns
+    has_sensitivity = "sharpe_sign_stable" in table.columns
+    if not (has_eff or has_dsr or has_sensitivity):
+        return
+
+    parts.append("## Robustness")
+    parts.append("")
+
+    if has_eff:
+        m_eff = table["m_eff"].iloc[0]
+        m_raw = len(table)
+        flipped = table[table["significant"] != table["significant_eff"]]
+        parts.append(
+            f"- **Collinearity-adjusted correction.** {m_raw} estimators were tested, "
+            f"but their OOS returns are correlated — the effective independent test "
+            f"count is `m_eff={_fmt(m_eff)}`. The headline verdict above uses the raw "
+            f"(conservative) `m={m_raw}` correction."
+        )
+        if len(flipped):
+            names = ", ".join(f"`{e}`" for e in flipped["estimator"])
+            parts.append(
+                f"  ⚠ **{len(flipped)} estimator(s) only clear the bar under the "
+                f"effective-m correction, not the raw one:** {names}. Treat these as "
+                f"a weaker, collinearity-adjusted signal, not the headline result."
+            )
+        else:
+            parts.append("  No estimator's significance flips between the raw and effective correction.")
+        parts.append("")
+
+    if has_dsr:
+        best = table.iloc[0]
+        parts.append(
+            f"- **Deflated Sharpe Ratio** (best performer, `{best['estimator']}`): "
+            f"`dsr_pvalue={_fmt(best['dsr_pvalue'])}` — probability the true Sharpe "
+            f"exceeds the expected best-of-N maximum under zero skill, given how many "
+            f"estimators were tried. Unlike a normal p-value, *higher* is more "
+            f"significant (commonly read as significant above ~0.95)."
+        )
+        parts.append("")
+
+    if has_sensitivity:
+        unstable = table[~table["sharpe_sign_stable"]]
+        if len(unstable):
+            names = ", ".join(f"`{e}`" for e in unstable["estimator"])
+            parts.append(
+                f"- ⚠ **Parameter sensitivity:** {len(unstable)} estimator(s) flip sign "
+                f"across neighboring windows (not just the fixed one used for ranking): "
+                f"{names}. Treat their result as a knife-edge artifact of the exact "
+                f"window chosen, not a robust finding."
+            )
+        else:
+            parts.append(
+                "- **Parameter sensitivity:** every estimator's OOS Sharpe sign is "
+                "stable across neighboring windows."
+            )
+        parts.append("")
 
 
 def write_report(path: str | Path, markdown: str) -> Path:

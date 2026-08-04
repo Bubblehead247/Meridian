@@ -29,6 +29,7 @@ class StrategyRecord:
     saved_at: str       # ISO date (YYYY-MM-DD)
     scorecard: dict     # full scorecard from that stage
     ledger: dict        # ledger.to_dict() at the moment of save
+    oos_run_count: int = 0   # >1 means this OOS pass followed prior attempts (see oos_guard.py)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -93,6 +94,8 @@ def record_from_pipeline(
     if last_passing is None:
         return None
     stage_name, stage_result = last_passing
+    oos_result = results.get("oos")
+    oos_run_count = oos_result.detail.get("oos_run_count", 0) if oos_result is not None else 0
     return StrategyRecord(
         family=family,
         model=model_name,
@@ -101,4 +104,5 @@ def record_from_pipeline(
         saved_at=date.today().isoformat(),
         scorecard=stage_result.scorecard,
         ledger=ledger.to_dict() if ledger is not None else {},
+        oos_run_count=oos_run_count,
     )

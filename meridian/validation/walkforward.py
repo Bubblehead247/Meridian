@@ -234,5 +234,5 @@ def _full_net_held(
     est, dev = key
     scores = compute_scores(prices, est, dev, window=window, bars=bars)
     positions = generate_positions(scores, signal)
-    res = backtest(prices, positions, cost_bps=cost_bps)
+    res = backtest(prices, positions, cost_bps=cost_bps, bars=bars)
     return res.returns, res.positions
