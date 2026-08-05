@@ -58,6 +58,37 @@ def test_resolve_symbols_explicit_list():
     assert runner.resolve_symbols({"data": {"symbol": "SPY"}}) == ["SPY"]
 
 
+def test_resolve_symbols_universe_key_blocked_by_default(monkeypatch):
+    """The config-driven path (meridian validate/backtest/universe/paper <config.yaml>)
+    must hit the same API-level guard as the CLI's --universe flag, not bypass it."""
+    from meridian.data import SurvivorshipBiasError
+    from meridian.data import universe as universe_mod
+
+    monkeypatch.setattr(universe_mod, "_fetch_constituents", lambda url, col: ("AAPL",))
+    with pytest.raises(SurvivorshipBiasError, match="SP500"):
+        runner.resolve_symbols({"data": {"universe": "SP500"}})
+
+
+def test_resolve_symbols_universe_key_accepts_with_flag(tmp_path, monkeypatch):
+    # Route through a fresh UniverseCache so a real on-disk SP500 cache from
+    # other tests/usage can't make this assertion pass for the wrong reason.
+    from meridian.data import cache as cache_mod
+    from meridian.data import universe as universe_mod
+    from meridian.data.cache import UniverseCache
+
+    monkeypatch.setattr(universe_mod, "_fetch_constituents", lambda url, col: ("AAPL", "MSFT"))
+    monkeypatch.setattr(cache_mod, "UniverseCache", lambda: UniverseCache(tmp_path))
+
+    syms = runner.resolve_symbols(
+        {"data": {"universe": "SP500", "accept_survivorship_bias": True}}
+    )
+    assert syms == ["AAPL", "MSFT"]
+
+
+def test_resolve_symbols_universe_key_etf_needs_no_flag():
+    assert runner.resolve_symbols({"data": {"universe": "SPY"}}) == ["SPY"]
+
+
 def test_is_survivorship_biased_default_path_is_biased():
     assert runner.is_survivorship_biased({}) is True
     assert runner.is_survivorship_biased({"data": {"symbols": ["SPY"]}}) is True

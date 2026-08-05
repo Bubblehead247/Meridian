@@ -9,6 +9,7 @@ import pytest
 from meridian.data import (
     OHLCVCache,
     SplitSpec,
+    SurvivorshipBiasError,
     UniverseCache,
     get_universe,
     load_ohlcv,
@@ -202,14 +203,54 @@ def test_index_universe_fetches_then_caches(tmp_path, monkeypatch):
     monkeypatch.setattr(universe_mod, "_fetch_constituents", fake_fetch)
     cache = UniverseCache(tmp_path)
 
-    u1 = get_universe("SP500", cache=cache)
+    u1 = get_universe("SP500", cache=cache, accept_survivorship_bias=True)
     assert u1.symbols == ("AAPL", "MSFT", "BRK-B")
     assert fetches["n"] == 1
 
     # Second resolve reads the cache instead of refetching.
-    u2 = get_universe("SP500", cache=cache)
+    u2 = get_universe("SP500", cache=cache, accept_survivorship_bias=True)
     assert u2.symbols == ("AAPL", "MSFT", "BRK-B")
     assert fetches["n"] == 1
+
+
+# --- survivorship-bias guard is API-level, not just a UI convenience ------
+# (regression coverage for the P0 blocker: get_universe() used to have zero
+# gating of its own, so any caller that bypassed the CLI's --universe check —
+# direct Python use, or the config-driven runner path — got a silently biased
+# universe with no warning at all.)
+
+def test_get_universe_blocks_index_universe_by_default(tmp_path, monkeypatch):
+    """Calling get_universe() directly for an index universe, with no flag, must
+    raise — the guard must not depend on a caller (like the CLI) checking first."""
+    monkeypatch.setattr(universe_mod, "_fetch_constituents", lambda url, col: ("AAPL",))
+    cache = UniverseCache(tmp_path)
+    with pytest.raises(SurvivorshipBiasError, match="SP500"):
+        get_universe("SP500", cache=cache)
+
+
+def test_get_universe_blocks_regardless_of_case_or_whitespace(tmp_path, monkeypatch):
+    monkeypatch.setattr(universe_mod, "_fetch_constituents", lambda url, col: ("AAPL",))
+    cache = UniverseCache(tmp_path)
+    with pytest.raises(SurvivorshipBiasError):
+        get_universe("  sp500  ", cache=cache)
+
+
+def test_get_universe_etf_universe_never_needs_the_flag():
+    # SPY/QQQ/IWM aren't an index-membership question — no gate should apply.
+    assert get_universe("SPY").symbols == ("SPY",)
+
+
+def test_get_universe_accepts_index_universe_when_flag_passed(tmp_path, monkeypatch):
+    monkeypatch.setattr(universe_mod, "_fetch_constituents", lambda url, col: ("AAPL", "MSFT"))
+    cache = UniverseCache(tmp_path)
+    u = get_universe("SP500", cache=cache, accept_survivorship_bias=True)
+    assert u.symbols == ("AAPL", "MSFT")
+
+
+def test_survivorship_bias_error_is_a_value_error():
+    # existing `except (KeyError, ValueError)` callers (e.g. the CLI's top-level
+    # handler) must keep catching this without any code change.
+    assert issubclass(SurvivorshipBiasError, ValueError)
 
 
 def test_symbol_normalization():

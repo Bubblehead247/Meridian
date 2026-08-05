@@ -111,7 +111,7 @@ def _resolve(entry: str, print_fn=None) -> list[str]:
                     "historical membership at any backtest date — this run is both "
                     "survivorship-biased and look-ahead-biased."
                 )
-            return list(get_universe(name).symbols)
+            return list(get_universe(name, accept_survivorship_bias=True).symbols)
     return [t.upper() for t in tokens]
 
 

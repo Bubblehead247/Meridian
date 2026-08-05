@@ -152,24 +152,23 @@ def _symbol_list(args, *, default_to_symbol: bool) -> list[str]:
     Index universes (SP500/NASDAQ100/RUSSELL1000) are resolved from *today's*
     constituent list — there is no historical membership data behind them — so using
     one for a backtest/pipeline/gauntlet/sweep run is both survivorship-biased and
-    look-ahead-biased (a 2015 backtest gets 2026's index). This is blocked unless the
-    caller explicitly passes ``--accept-survivorship-bias``, matching the "flag loudly,
-    don't silently degrade" fix applied to fill timing.
+    look-ahead-biased (a 2015 backtest gets 2026's index). ``get_universe`` itself
+    enforces this (``SurvivorshipBiasError``, a ``ValueError``); this wrapper just
+    translates ``--accept-survivorship-bias`` into the API's own gate rather than
+    duplicating the check.
     """
     if getattr(args, "universe", None):
-        from meridian.data.universe import INDEX_UNIVERSES, get_universe
+        from meridian.data.universe import SurvivorshipBiasError, get_universe
 
-        if (args.universe.strip().upper() in INDEX_UNIVERSES
-                and not getattr(args, "accept_survivorship_bias", False)):
-            raise ValueError(
-                f"--universe {args.universe!r} resolves to TODAY's index constituents, "
-                "not the historical membership at any backtest date — this is a "
-                "survivorship-bias AND look-ahead leak, not just a survivorship gap. "
-                "Pass --accept-survivorship-bias to proceed anyway, or use "
-                "data.source=survivorship (point-in-time, 2013-02 to 2018-02 only) "
-                "for a bias-controlled run."
-            )
-        return list(get_universe(args.universe).symbols)
+        try:
+            return list(get_universe(
+                args.universe,
+                accept_survivorship_bias=getattr(args, "accept_survivorship_bias", False),
+            ).symbols)
+        except SurvivorshipBiasError as exc:
+            raise SurvivorshipBiasError(
+                f"{exc} Pass --accept-survivorship-bias to proceed anyway."
+            ) from None
     if getattr(args, "symbols", None):
         return list(args.symbols)
     return [args.symbol] if default_to_symbol else []

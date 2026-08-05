@@ -21,6 +21,17 @@ from dataclasses import dataclass
 import pandas as pd
 
 
+class SurvivorshipBiasError(ValueError):
+    """Raised when an index universe is resolved without acknowledging the bias.
+
+    Index universes (SP500/NASDAQ100/RUSSELL1000) are resolved from *today's*
+    constituent list, not the historical membership at any past date — using one
+    for a backtest is both survivorship-biased and look-ahead-biased. This is a
+    ``ValueError`` subclass so existing ``except (KeyError, ValueError)`` callers
+    (e.g. the CLI's top-level error handler) catch it without changes.
+    """
+
+
 @dataclass(frozen=True)
 class Universe:
     """A named set of tradable symbols."""
@@ -84,7 +95,9 @@ def _fetch_constituents(url: str, symbol_col: str) -> tuple[str, ...]:
     raise ValueError(f"No table with column {symbol_col!r} found at {url}")
 
 
-def get_universe(name: str, use_cache: bool = True, cache=None) -> Universe:
+def get_universe(
+    name: str, use_cache: bool = True, cache=None, *, accept_survivorship_bias: bool = False
+) -> Universe:
     """Resolve a universe by name.
 
     Args:
@@ -93,12 +106,21 @@ def get_universe(name: str, use_cache: bool = True, cache=None) -> Universe:
             on-disk cache instead of refetching. Ignored for ETF universes.
         cache: Optional ``UniverseCache`` for constituent persistence. If None,
             a default-located cache is used.
+        accept_survivorship_bias: Required ``True`` to resolve an index universe
+            (see ``INDEX_UNIVERSES``) — it always reflects *today's* membership,
+            never the historical membership at any past date. This is the API-level
+            enforcement of that gate; callers must pass it explicitly rather than
+            relying on a UI layer (e.g. a CLI flag) to have already checked it,
+            since ``get_universe`` is reachable directly and from config-driven
+            entry points that don't go through the CLI at all.
 
     Returns:
         The resolved Universe.
 
     Raises:
         KeyError: If ``name`` is not a known universe.
+        SurvivorshipBiasError: If ``name`` is an index universe and
+            ``accept_survivorship_bias`` is not True.
     """
     key = name.strip().upper()
 
@@ -107,6 +129,15 @@ def get_universe(name: str, use_cache: bool = True, cache=None) -> Universe:
 
     if key not in _INDEX_SOURCES:
         raise KeyError(f"Unknown universe {name!r}. Known: {', '.join(KNOWN_UNIVERSES)}")
+
+    if not accept_survivorship_bias:
+        raise SurvivorshipBiasError(
+            f"{key!r} resolves to TODAY's index constituents, not the historical "
+            "membership at any backtest date — this is a survivorship-bias AND "
+            "look-ahead leak, not just a survivorship gap. Pass "
+            "accept_survivorship_bias=True to proceed anyway, or use "
+            "data.source=survivorship (point-in-time) for a bias-controlled run."
+        )
 
     if cache is None:
         from meridian.data.cache import UniverseCache

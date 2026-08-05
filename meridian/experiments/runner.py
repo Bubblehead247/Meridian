@@ -54,13 +54,29 @@ def resolve_estimators(cfg: dict) -> list[str]:
 def resolve_symbols(cfg: dict, screener=None) -> list[str]:
     """Resolve the trading symbols from a config.
 
-    If ``data.screen`` is present, build the universe by screening
-    FinanceDatabase metadata (e.g. country / sector / market_cap); otherwise use
-    the explicit ``data.symbols`` (or single ``data.symbol``). The optional
+    Priority: ``data.screen`` (build via FinanceDatabase screening) > ``data.universe``
+    (a named universe, e.g. ``SP500``/``QQQ`` — routes through ``get_universe`` so index
+    universes get the same survivorship-bias gate the CLI's ``--universe`` flag uses,
+    since this is the entry point the config-driven ``meridian validate/backtest/universe/
+    paper <config.yaml>`` commands go through instead of the CLI's own ``--universe``
+    handling) > the explicit ``data.symbols`` (or single ``data.symbol``). The optional
     ``limit`` caps the screened list. ``screener`` may be injected for testing.
     """
     data = cfg.get("data", {})
     screen = data.get("screen")
+    universe_name = data.get("universe")
+    if universe_name:
+        from meridian.data.universe import SurvivorshipBiasError, get_universe
+
+        try:
+            return list(get_universe(
+                universe_name,
+                accept_survivorship_bias=bool(data.get("accept_survivorship_bias", False)),
+            ).symbols)
+        except SurvivorshipBiasError as exc:
+            raise SurvivorshipBiasError(
+                f"{exc} Set data.accept_survivorship_bias: true in the config to proceed anyway."
+            ) from None
     if screen:
         if screener is None:
             from meridian.data import EquityScreener
