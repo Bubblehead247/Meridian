@@ -105,8 +105,63 @@ def apply_risk_contributions(
         led.update_metrics(risk_contribution=contrib[led.name])
 
 
+#: Below this many *jointly-observed* bars (all sleeves aligned), the sample
+#: covariance is too noisy to trust for a risk decomposition — return the degenerate
+#: (all-zero) result instead of a number built on too little data.
+DEFAULT_MIN_COV_PERIODS = 60
+
+#: Condition number above which the covariance matrix is treated as numerically
+#: unreliable (near-singular — e.g. two sleeves with almost-identical, or a small
+#: joint-observation count relative to the number of sleeves) and ridge-regularized
+#: before use. 1e10 is a standard rule-of-thumb "double precision is running out"
+#: threshold (a well-conditioned financial covariance matrix is usually << 1e6).
+DEFAULT_COND_THRESHOLD = 1e10
+
+
+def _covariance_diagnostics(
+    frame: pd.DataFrame, *, min_periods: int, cond_threshold: float,
+) -> tuple[np.ndarray | None, dict]:
+    """Build a PSD-safe covariance matrix from ``frame``, or None if unusable.
+
+    Returns ``(cov_or_None, diagnostics)``. ``diagnostics`` always has ``n_periods``,
+    ``condition_number`` (NaN if not computed) and ``regularized`` (bool), so a caller
+    can see *why* a result is degenerate rather than just getting zeros.
+    """
+    # Joint (not pairwise) dropna: pandas' default .cov() uses pairwise-complete
+    # observations per column pair, which — under differential missingness across
+    # sleeves — is not guaranteed to be positive-semi-definite (each entry can come
+    # from a different subset of rows). Aligning on the common observed window first
+    # guarantees a proper empirical covariance matrix.
+    aligned = frame.dropna()
+    n = len(aligned)
+    diag = {"n_periods": n, "condition_number": float("nan"), "regularized": False}
+    if n < min_periods:
+        return None, diag
+
+    cov = aligned.cov().to_numpy()
+    if not np.all(np.isfinite(cov)):
+        return None, diag
+
+    cond = float(np.linalg.cond(cov))
+    diag["condition_number"] = cond
+    if not np.isfinite(cond) or cond > cond_threshold:
+        # Ridge/diagonal loading: a standard numerical-stability fix for a
+        # near-singular matrix, NOT a bias-variance shrinkage estimator (that would
+        # be Ledoit-Wolf or similar, which needs its own verified derivation before
+        # use — see research_integrity_gap_analysis.md's Rule 5). This only nudges
+        # the matrix off a singularity; it does not attempt to improve out-of-sample
+        # covariance estimation accuracy.
+        avg_var = float(np.trace(cov)) / cov.shape[0] if cov.shape[0] else 0.0
+        eps = max(avg_var, 1e-12) * 1e-6
+        cov = cov + eps * np.eye(cov.shape[0])
+        diag["regularized"] = True
+        diag["condition_number"] = float(np.linalg.cond(cov))
+    return cov, diag
+
+
 def marginal_risk_contributions(
-    sleeve_returns: dict[str, "pd.Series"], weights: dict[str, float]
+    sleeve_returns: dict[str, "pd.Series"], weights: dict[str, float],
+    *, min_periods: int = DEFAULT_MIN_COV_PERIODS, cond_threshold: float = DEFAULT_COND_THRESHOLD,
 ) -> dict[str, float]:
     """Each sleeve's share of *portfolio volatility* (correlation-adjusted), not heat.
 
@@ -121,6 +176,15 @@ def marginal_risk_contributions(
     with the others is accounted for. A sleeve with low heat can still
     dominate this if it's the uncorrelated one carrying most of the swings.
 
+    That the shares sum to exactly 1.0 is a property of Euler decomposition
+    arithmetic — it does NOT mean the covariance matrix itself is statistically
+    reliable. This function now guards two failure modes that can silently produce a
+    misleading (but internally-consistent-looking) decomposition: too little jointly-
+    observed history (``min_periods``, joint not pairwise dropna — see
+    ``_covariance_diagnostics``) and a near-singular matrix (``cond_threshold`` — ridge-
+    regularized rather than trusted as-is). Use ``marginal_risk_contributions_diagnostics``
+    to see the condition number / regularization flag / n_periods actually used.
+
     Args:
         sleeve_returns: ``{sleeve: return_series}`` (e.g. from
             ``experiments/fund.py``'s ``run_fund``/``run_cs_fund``). Sleeves
@@ -129,31 +193,58 @@ def marginal_risk_contributions(
         weights: ``{sleeve: capital_alloc / account_equity}`` for every
             sleeve — only entries also present in ``sleeve_returns`` are used
             to build the covariance matrix.
+        min_periods: Minimum jointly-observed bars required to trust the covariance
+            estimate; below this, returns the degenerate (all-zero) result.
+        cond_threshold: Condition-number ceiling above which the matrix is
+            ridge-regularized before use (see ``_covariance_diagnostics``).
 
     Returns:
         ``{sleeve: share}`` for every key in ``weights`` (0.0 for sleeves
         without a return series, or all sleeves when fewer than 2 have
-        returns, or the portfolio variance is degenerate).
+        returns, too little joint history, or the portfolio variance is degenerate).
+    """
+    shares, _ = marginal_risk_contributions_diagnostics(
+        sleeve_returns, weights, min_periods=min_periods, cond_threshold=cond_threshold,
+    )
+    return shares
+
+
+def marginal_risk_contributions_diagnostics(
+    sleeve_returns: dict[str, "pd.Series"], weights: dict[str, float],
+    *, min_periods: int = DEFAULT_MIN_COV_PERIODS, cond_threshold: float = DEFAULT_COND_THRESHOLD,
+) -> tuple[dict[str, float], dict]:
+    """Same as ``marginal_risk_contributions``, plus the covariance diagnostics.
+
+    Returns ``(shares, diagnostics)`` where ``diagnostics`` has ``n_periods`` (jointly-
+    observed bars actually used), ``condition_number`` (post-regularization if
+    applied), and ``regularized`` (bool). ``diagnostics`` is ``{}`` when fewer than 2
+    sleeves have a return series at all (the decomposition never got as far as
+    building a covariance matrix).
     """
     names = [n for n in weights if n in sleeve_returns]
     out = {n: 0.0 for n in weights}
     if len(names) < 2:
-        return out
+        return out, {}
 
     frame = pd.DataFrame({n: sleeve_returns[n] for n in names})
-    cov = frame.cov().to_numpy()
+    cov, diag = _covariance_diagnostics(
+        frame, min_periods=min_periods, cond_threshold=cond_threshold
+    )
+    if cov is None:
+        return out, diag
+
     w = np.array([weights[n] for n in names], dtype=float)
     cov_w = cov @ w
     port_var = float(w @ cov_w)
     if port_var <= 0 or port_var != port_var:
-        return out
+        return out, diag
 
     sigma_p = np.sqrt(port_var)
     cctr = w * cov_w / sigma_p        # component contributions, sum to sigma_p
     shares = cctr / sigma_p           # normalize to shares summing to ~1
     for n, s in zip(names, shares, strict=True):
         out[n] = float(s)
-    return out
+    return out, diag
 
 
 def check_suspension(

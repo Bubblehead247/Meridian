@@ -211,9 +211,65 @@ def test_validate_produces_verdict_table():
         n_boot=200, n_mc=200, block=10, seed=0,
     )
     for col in ["estimator", "oos_sharpe", "boot_ci_low", "boot_ci_high",
-                "mc_pvalue", "q_value", "significant"]:
+                "mc_pvalue", "q_value", "significant",
+                "t_stat_classical", "significant_hlz"]:
         assert col in df.columns
     assert len(df) == 3
     assert df["significant"].dtype == bool
+    assert df["significant_hlz"].dtype == bool
     # sorted by oos_sharpe descending
     assert df["oos_sharpe"].is_monotonic_decreasing
+
+
+def test_validate_dsr_eff_uses_m_eff_not_raw_trial_count():
+    # Regression for P1-A: dsr_pvalue previously always used n_trials=len(estimators),
+    # inconsistent with q_value_eff's m_eff-based correction (computed from the same
+    # trials' correlation but plugged into a different downstream formula). Correlated
+    # trials (sma/ema/ou are all moving-average variants) collapse m_eff well below the
+    # raw count, which must lower DSR's expected-max-Sharpe bar and therefore raise
+    # (or leave equal) dsr_pvalue_eff relative to the raw-m dsr_pvalue.
+    prices = _mean_reverting()
+    spec = WalkForwardSpec(mode="anchored", min_train=200, test_span=100, step=100)
+    # A wider, less-collinear estimator set than the other tests here, so m_eff lands
+    # comfortably above the n>=2 floor expected_max_sharpe requires (with only 3 tightly
+    # correlated MA variants, m_eff collapses below 2 and both DSR columns go NaN —
+    # itself correct behavior, just not useful for this comparison).
+    estimators = ["sma", "ema", "ou", "kalman", "hull", "t3", "lsma"]
+    df = validate(
+        prices, estimators, "zscore",
+        SignalConfig(entry_threshold=1.0), spec=spec, window=20,
+        n_boot=200, n_mc=200, block=10, seed=0,
+    )
+    assert "dsr_pvalue_eff" in df.columns
+    m_eff = df["m_eff"].iloc[0]
+    assert 2 <= m_eff < len(df)  # sanity: collapsed below raw m, but still DSR-computable
+
+    both_finite = df["dsr_pvalue"].notna() & df["dsr_pvalue_eff"].notna()
+    assert both_finite.any()
+    sub = df[both_finite]
+    assert (sub["dsr_pvalue_eff"] >= sub["dsr_pvalue"] - 1e-9).all()
+    assert (sub["dsr_pvalue_eff"] != sub["dsr_pvalue"]).any()
+
+
+def test_validate_cpcv_opt_in_attaches_pbo_column():
+    prices = _mean_reverting(n=1500)
+    spec = WalkForwardSpec(mode="anchored", min_train=200, test_span=100, step=100)
+    df = validate(
+        prices, ["sma", "ema", "ou"], "zscore",
+        SignalConfig(entry_threshold=1.0), spec=spec, window=20,
+        n_boot=50, n_mc=50, block=10, seed=0,
+        cpcv=True, cpcv_kwargs={"n_groups": 5, "n_test_groups": 1, "purge_bars": 2, "embargo_bars": 2},
+    )
+    assert "pbo" in df.columns
+    assert df["pbo"].nunique() == 1  # broadcast, same convention as m_eff
+
+
+def test_validate_without_cpcv_has_no_pbo_column():
+    prices = _mean_reverting()
+    spec = WalkForwardSpec(mode="anchored", min_train=200, test_span=100, step=100)
+    df = validate(
+        prices, ["sma", "ema"], "zscore",
+        SignalConfig(entry_threshold=1.0), spec=spec, window=20,
+        n_boot=50, n_mc=50, block=10, seed=0,
+    )
+    assert "pbo" not in df.columns

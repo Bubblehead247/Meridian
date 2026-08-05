@@ -77,6 +77,18 @@ def test_universe_oos_stage_empty_when_no_data_in_window():
     assert res.detail.get("n_oos", 0) == 0
 
 
+def test_universe_pipeline_tracks_oos_runs_by_default(monkeypatch, tmp_path):
+    from meridian.pipeline import oos_guard as oos_guard_mod
+
+    monkeypatch.setattr(oos_guard_mod, "DEFAULT_GUARD_DIR", tmp_path / "oos_runs")
+    model = create_model("momentum", "relative_strength")
+    universe = _universe_long()
+    res1 = run_universe_pipeline(model, universe, stages=("oos",), stop_on_fail=False)
+    res2 = run_universe_pipeline(model, universe, stages=("oos",), stop_on_fail=False)
+    assert res1["oos"].detail.get("oos_run_count") == 1
+    assert res2["oos"].detail.get("oos_run_count") == 2
+
+
 def test_universe_pipeline_runs_all_three_stages():
     model = create_model("momentum", "relative_strength")
     led = StrategyLedger(name="relative_strength", family="momentum", stage="research")

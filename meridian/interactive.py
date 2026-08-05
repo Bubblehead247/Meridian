@@ -97,14 +97,21 @@ PRESETS: list[tuple[str, str]] = [
 ]
 
 
-def _resolve(entry: str) -> list[str]:
+def _resolve(entry: str, print_fn=None) -> list[str]:
     """Turn a typed entry into a symbol list (a known universe name expands; else tickers)."""
     tokens = entry.split()
     if len(tokens) == 1:
-        from meridian.data.universe import KNOWN_UNIVERSES, get_universe
+        from meridian.data.universe import INDEX_UNIVERSES, KNOWN_UNIVERSES, get_universe
 
-        if tokens[0].upper() in KNOWN_UNIVERSES:
-            return list(get_universe(tokens[0].upper()).symbols)
+        name = tokens[0].upper()
+        if name in KNOWN_UNIVERSES:
+            if name in INDEX_UNIVERSES and print_fn is not None:
+                print_fn(
+                    f"  WARNING: {name} resolves to TODAY's constituents, not the "
+                    "historical membership at any backtest date — this run is both "
+                    "survivorship-biased and look-ahead-biased."
+                )
+            return list(get_universe(name).symbols)
     return [t.upper() for t in tokens]
 
 
@@ -119,7 +126,7 @@ def _prompt_symbols(input_fn, print_fn) -> list[str] | None:
         return None
     if raw.isdigit() and 1 <= int(raw) <= len(PRESETS):
         raw = PRESETS[int(raw) - 1][0]
-    syms = _resolve(raw)
+    syms = _resolve(raw, print_fn=print_fn)
     return syms or None
 
 
@@ -166,8 +173,8 @@ def _do_single(symbols: list[str], input_fn, print_fn) -> None:
     )
     from meridian.portfolio import StrategyLedger
 
-    basket = len(symbols) > 1
-    qualified = _pick_model(input_fn, print_fn, cross_sectional=basket)
+    is_basket = len(symbols) > 1
+    qualified = _pick_model(input_fn, print_fn, cross_sectional=is_basket)
     if qualified is None:
         return
     family, name = qualified.split("/")
@@ -177,18 +184,25 @@ def _do_single(symbols: list[str], input_fn, print_fn) -> None:
     model = create_model(family, name)
     ledger = StrategyLedger(name=name, family=family, stage="research")
     criteria = criteria_for_family(family)
-    if basket:
-        universe = {s: _load_one(s)[0] for s in symbols}
-        results = run_universe_pipeline(model, universe, ledger=ledger, criteria=criteria)
+    if is_basket:
+        loaded = {s: _load_one(s) for s in symbols}
+        universe = {s: prices for s, (prices, _) in loaded.items()}
+        bars_by_symbol = {s: frame for s, (_, frame) in loaded.items() if "open" in frame.columns}
+        basket_sym = "+".join(symbols[:3]) + (f"+{len(symbols)-3}more" if len(symbols) > 3 else "")
+        results = run_universe_pipeline(
+            model, universe, ledger=ledger, criteria=criteria,
+            bars_by_symbol=bars_by_symbol or None, basket=basket_sym,
+        )
         label = " ".join(symbols[:3]) + ("…" if len(symbols) > 3 else "")
         print_fn(f"\n{qualified} on [{label}] ({len(universe)} names)")
-        basket_sym = "+".join(symbols[:3]) + (f"+{len(symbols)-3}more" if len(symbols) > 3 else "")
         rec = record_from_pipeline(family, name, basket_sym, results, ledger)
         if rec is not None:
             save_record(rec)
     else:
         prices, frame = _load_one(symbols[0])
-        results = run_pipeline(model, prices, ledger=ledger, bars=frame, criteria=criteria)
+        results = run_pipeline(
+            model, prices, ledger=ledger, bars=frame, criteria=criteria, symbol=symbols[0],
+        )
         print_fn(f"\n{qualified} on {symbols[0]}  ({len(prices)} bars)")
         rec = record_from_pipeline(family, name, symbols[0], results, ledger)
         if rec is not None:
@@ -197,6 +211,10 @@ def _do_single(symbols: list[str], input_fn, print_fn) -> None:
         sharpe = res.scorecard.get("sharpe")
         sh = f"{sharpe:.2f}" if isinstance(sharpe, float) and sharpe == sharpe else "n/a"
         print_fn(f"  {stage:12s} passed={res.passed!s:5s} sharpe={sh:>6s}")
+        run_count = res.detail.get("oos_run_count")
+        if run_count and run_count > 1:
+            print_fn(f"  WARNING: this is OOS evaluation #{run_count} against this holdout "
+                      f"— a prior pass may not be a first look")
     print_fn(f"  final graduation stage: {ledger.stage}")
 
 
@@ -208,9 +226,11 @@ def _do_gauntlet(symbols: list[str], print_fn) -> None:
     )
 
     if len(symbols) > 1:
-        universe = {s: _load_one(s)[0] for s in symbols}
+        loaded = {s: _load_one(s) for s in symbols}
+        universe = {s: prices for s, (prices, _) in loaded.items()}
+        bars_by_symbol = {s: frame for s, (_, frame) in loaded.items() if "open" in frame.columns}
         print_fn(f"\nGauntlet — cross-sectional models on {len(universe)} names:")
-        df = gauntlet_universe(universe)
+        df = gauntlet_universe(universe, bars_by_symbol=bars_by_symbol or None)
     else:
         prices, frame = _load_one(symbols[0])
         print_fn(f"\nGauntlet — single-asset models on {symbols[0]} ({len(prices)} bars):")

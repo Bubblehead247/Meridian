@@ -1,0 +1,39 @@
+# Graduation criteria — the metric bar a strategy must clear to promote, and the
+# dwell-time gates around each stage. Treat this file as part of the experimental
+# design (see research_integrity_gap_analysis.md, P1-C): changing a threshold here
+# changes the pass/fail rule every strategy is judged against, so a bump to
+# `version` is required whenever a value below changes. A strategy already in the
+# pipeline is bound to the version active when it entered `research`
+# (StrategyLedger.criteria_version) and `pipeline.graduation.advance` will refuse to
+# silently re-judge it under a newer version — see `allow_criteria_override`.
+#
+# Run: no command reads this directly; it's loaded by
+# `meridian.pipeline.graduation.load_criteria_config`.
+
+version: "1.0.0"
+
+# --- metric bar (pipeline.graduation.passes_metric_bar) --------------------
+min_sharpe: 0.35
+min_expectancy: 0.0
+max_drawdown_limit: 0.45              # fallback when a family has no allocation_weight
+max_portfolio_dd_contribution: 0.08   # max allowed portfolio drawdown impact
+min_periods: 1260                     # minimum bars required (~5 years)
+
+# --- dwell time (days) -------------------------------------------------------
+# Minimum days in stage before promotion is considered (live stages only — the
+# pre-live stages promote on evidence alone, no minimum dwell).
+min_days_in_stage:
+  paper: 30
+  pilot: 90
+  proven: 180
+  core: 365
+
+# Maximum days in a pre-live stage before it is flagged stale (non-blocking — see
+# pipeline.graduation.check_stale). A strategy stuck in `research` for a year
+# without failing outright is a sign it is being silently re-tried, not validated.
+max_days_in_stage:
+  research: 90
+  backtest: 90
+  walk_forward: 90
+  oos: 90
+  paper: 180

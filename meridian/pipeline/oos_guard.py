@@ -46,8 +46,11 @@ class OOSRunRecord:
 class OOSGuard:
     """JSON-backed run counter, one file per (family, model, symbol)."""
 
-    def __init__(self, root: str | Path = DEFAULT_GUARD_DIR):
-        self.root = Path(root)
+    def __init__(self, root: str | Path | None = None):
+        # Resolved at call time (not bound as a default-argument value) so tests can
+        # monkeypatch the module-level DEFAULT_GUARD_DIR and have it actually take
+        # effect — see tests/conftest.py's ledger-redirection fixture.
+        self.root = Path(root) if root is not None else DEFAULT_GUARD_DIR
 
     def _path(self, family: str, model: str, symbol: str) -> Path:
         return self.root / f"{family}__{model}__{symbol}.json"

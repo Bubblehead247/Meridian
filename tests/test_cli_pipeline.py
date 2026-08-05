@@ -164,3 +164,33 @@ def test_pipeline_cross_sectional_via_universe(monkeypatch, capsys):
     rc = cli.main(["pipeline", "momentum/relative_strength", "--universe", "MINI"])
     assert rc == 0
     assert "cross-sectional, 3 symbols" in capsys.readouterr().out
+
+
+def test_pipeline_index_universe_blocked_without_acknowledgement(monkeypatch, capsys):
+    # Regression for the P0 look-ahead gap: SP500/NASDAQ100/RUSSELL1000 resolve to
+    # TODAY's constituents with no historical membership data behind them, so using one
+    # for a backtest silently leaked future index membership into the past. This must
+    # now be blocked unless explicitly acknowledged, not silently resolved.
+    _patch_loader(monkeypatch)
+    rc = cli.main(["pipeline", "momentum/relative_strength", "--universe", "SP500"])
+    assert rc == 2
+    assert "survivorship" in capsys.readouterr().err.lower()
+
+
+def test_pipeline_index_universe_allowed_with_acknowledgement(monkeypatch, capsys):
+    from meridian.data import universe as universe_mod
+
+    def frame_for(symbol):
+        rng = np.random.default_rng(abs(hash(symbol)) % 1000)
+        close = 100 * np.exp(np.cumsum(rng.normal(0.0003, 0.01, 800)))
+        return _frame(n=800, base=close)
+
+    _patch_loader(monkeypatch, frame_for=frame_for)
+    monkeypatch.setattr(universe_mod, "get_universe",
+                        lambda name, **k: universe_mod.Universe(name, ("A", "B", "C")))
+    rc = cli.main([
+        "pipeline", "momentum/relative_strength", "--universe", "SP500",
+        "--accept-survivorship-bias",
+    ])
+    assert rc == 0
+    assert "cross-sectional, 3 symbols" in capsys.readouterr().out

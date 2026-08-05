@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from meridian.data import SurvivorshipDataset
+from meridian.data.survivorship import coverage_warning
 
 
 @pytest.fixture
@@ -67,6 +68,27 @@ def test_survivor_only_drops_removed_names(dataset):
     # asof latest snapshot (Feb) -> only the survivors A, B; C is missing (the bias)
     surv = dataset.survivor_only_universe("2018-01-01", "2018-03-01")
     assert set(surv) == {"A", "B"}
+
+
+# --- coverage_warning (P1-E) -------------------------------------------------
+
+def test_coverage_warning_none_when_fully_within_coverage():
+    assert coverage_warning("2014-01-01", "2018-01-01") is None
+
+
+def test_coverage_warning_flags_a_window_starting_before_coverage():
+    w = coverage_warning("2005-01-01", "2015-01-01")
+    assert w is not None and "2010-01-04" in w
+
+
+def test_coverage_warning_flags_a_window_ending_after_coverage():
+    w = coverage_warning("2015-01-01", "2019-12-31")
+    assert w is not None and "2018-03-27" in w
+
+
+def test_coverage_warning_none_when_start_and_end_omitted():
+    # Omitted bounds default to the dataset's own coverage — nothing to warn about.
+    assert coverage_warning(None, None) is None
 
 
 def test_survivorship_free_includes_removed_names(dataset):

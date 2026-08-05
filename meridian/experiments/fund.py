@@ -92,7 +92,7 @@ def run_fund(
         model = create_model(led.family, model_name)
         results = run_pipeline(
             model, prices, ledger=led, bars=bars, cost_bps=cost_bps,
-            regime_frame=regime_frame,
+            regime_frame=regime_frame, symbol=symbol,
         )
         scorecards[led.name] = list(results.values())[-1].scorecard
         # Same backtest run_pipeline's backtest stage already performed; kept here
@@ -134,6 +134,7 @@ def run_cs_fund(
     ledgers = seed_ledgers(equity)
     scorecards: dict[str, dict] = {}
     sleeve_returns: dict[str, pd.Series] = {}
+    basket = "_".join(sorted(prices_by_symbol))
     for led in ledgers:
         cs_name = _first_cs_model(led.family)
         if cs_name is None:
@@ -141,7 +142,7 @@ def run_cs_fund(
         model = create_model(led.family, cs_name)
         results = run_universe_pipeline(
             model, prices_by_symbol, ledger=led, cost_bps=cost_bps,
-            bars_by_symbol=bars_by_symbol, regime_frame=regime_frame,
+            bars_by_symbol=bars_by_symbol, regime_frame=regime_frame, basket=basket,
         )
         if results:
             scorecards[led.name] = list(results.values())[-1].scorecard

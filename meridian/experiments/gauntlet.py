@@ -1,10 +1,16 @@
 """Strategy gauntlet — run every model on a symbol/basket and rank them.
 
-A "which strategy works best here" scoreboard: each registered model is backtested through
-the existing stage runner and ranked by out-of-sample-style metrics. This module owns the
-ranking/aggregation only; it reuses ``pipeline.run_backtest_stage`` /
+A "which strategy works best here" scoreboard: each registered model is run through the
+``backtest`` stage only (full-history, in-sample) and ranked by its scorecard. This module
+owns the ranking/aggregation only; it reuses ``pipeline.run_backtest_stage`` /
 ``run_universe_backtest_stage`` (and the scorecard inside them) for all the math and does no
 network I/O itself (callers pass loaded prices), so it is fully offline-testable.
+
+IMPORTANT: despite the name, this is a full-history ranking, not an out-of-sample one — it
+never calls ``run_walk_forward_stage`` or ``run_oos_stage``, so it never touches the fixed
+OOS holdout and its numbers should not be read as OOS-style evidence. A model ranked highly
+here still has to clear walk-forward/OOS on its own before it means anything; use
+``run_pipeline`` / ``run_cross_sectional_pipeline`` / ``run_universe_pipeline`` for that.
 """
 
 from __future__ import annotations
@@ -17,7 +23,7 @@ from meridian.pipeline.graduation import criteria_for_family
 
 _COLUMNS = [
     "family", "model", "passed", "sharpe", "cagr", "total_return",
-    "max_drawdown", "n_trades", "trades_per_year",
+    "max_drawdown", "n_trades", "trades_per_year", "fill_realism",
 ]
 
 _PERIODS_PER_YEAR = 252
@@ -43,6 +49,7 @@ def _row(family: str, name: str, result) -> dict:
         "max_drawdown": card.get("max_drawdown"),
         "n_trades": card.get("n_trades"),
         "trades_per_year": _trades_per_year(card),
+        "fill_realism": result.detail.get("fill_realism", "close_approx"),
     }
 
 
@@ -74,15 +81,21 @@ def gauntlet_universe(
     prices_by_symbol: dict[str, pd.Series],
     *,
     cost_bps: float = 1.0,
+    bars_by_symbol: dict[str, pd.DataFrame] | None = None,
     periods_per_year: int = 252,
 ) -> pd.DataFrame:
-    """Rank every cross-sectional model on a basket (best Sharpe first)."""
+    """Rank every cross-sectional model on a basket (best Sharpe first).
+
+    ``bars_by_symbol`` (optional OHLC per symbol) enables next-open fills — without it,
+    every ranked model silently falls back to same-close fills (see
+    ``run_universe_backtest_stage`` / ``CrossSectionalModel.backtest``).
+    """
     rows = []
     for family, name in _cross_sectional_models():
         model = create_model(family, name)
         res = run_universe_backtest_stage(
-            model, prices_by_symbol, cost_bps=cost_bps, periods_per_year=periods_per_year,
-            criteria=criteria_for_family(family),
+            model, prices_by_symbol, cost_bps=cost_bps, bars_by_symbol=bars_by_symbol,
+            periods_per_year=periods_per_year, criteria=criteria_for_family(family),
         )
         rows.append(_row(family, name, res))
     return _ranked(rows)
@@ -122,6 +135,7 @@ def format_gauntlet(df: pd.DataFrame) -> str:
             "max_drawdown": _fmt_num(df["max_drawdown"], "{:.1%}"),
             "n_trades": df["n_trades"].map(lambda v: "" if v is None or v != v else int(v)),
             "trades/yr": _fmt_num(df["trades_per_year"], "{:.1f}"),
+            "fill_realism": df["fill_realism"],
         }
     )
     return shown.to_string(index=False)

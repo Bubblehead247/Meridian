@@ -16,6 +16,7 @@ from meridian.portfolio import (
     check_suspension,
     compute_portfolio_heat,
     marginal_risk_contributions,
+    marginal_risk_contributions_diagnostics,
     portfolio_heat_breached,
     risk_contributions,
     strategy_heat,
@@ -170,3 +171,63 @@ def test_mctr_fewer_than_two_sleeves_is_all_zero():
 
 def test_mctr_empty_is_safe():
     assert marginal_risk_contributions({}, {"mr": 1.0}) == {"mr": 0.0}
+
+
+# --- MCTR covariance safeguards (P2-B) ---------------------------------------
+
+def test_mctr_too_little_joint_history_is_degenerate_not_noisy():
+    # Regression for P2-B: previously any n>=2 sample (even 10 bars) was fed straight
+    # into .cov() and treated as a trustworthy decomposition. Below min_periods it must
+    # now return the safe degenerate result instead of a number built on noise.
+    rng = np.random.default_rng(4)
+    returns = {
+        "mr": pd.Series(rng.normal(0, 0.01, 10)), "tf": pd.Series(rng.normal(0, 0.01, 10)),
+    }
+    out = marginal_risk_contributions(returns, {"mr": 0.5, "tf": 0.5}, min_periods=60)
+    assert out == {"mr": 0.0, "tf": 0.0}
+
+
+def test_mctr_diagnostics_reports_n_periods_and_condition_number():
+    rng = np.random.default_rng(5)
+    common = rng.normal(0, 0.01, 500)
+    returns = {
+        name: pd.Series(common * beta + rng.normal(0, 0.01, 500))
+        for name, beta in [("mr", 0.3), ("tf", -0.2)]
+    }
+    shares, diag = marginal_risk_contributions_diagnostics(returns, {"mr": 0.5, "tf": 0.5})
+    assert diag["n_periods"] == 500
+    assert diag["condition_number"] > 1.0
+    assert diag["regularized"] is False
+    assert sum(shares.values()) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_mctr_regularizes_a_near_singular_covariance():
+    # Two sleeves with (numerically) identical returns -> a singular/near-singular
+    # covariance matrix. Without ridge regularization this either raises inside
+    # np.linalg or produces an unstable/nonsensical decomposition.
+    rng = np.random.default_rng(6)
+    base = pd.Series(rng.normal(0, 0.01, 200))
+    returns = {"mr": base, "tf": base.copy()}  # perfectly collinear
+    shares, diag = marginal_risk_contributions_diagnostics(
+        returns, {"mr": 0.5, "tf": 0.5}, cond_threshold=1e6,
+    )
+    assert diag["regularized"] is True
+    assert np.isfinite(diag["condition_number"])
+    assert all(np.isfinite(v) for v in shares.values())
+    assert sum(shares.values()) == pytest.approx(1.0, abs=1e-6)
+
+
+def test_mctr_joint_dropna_not_pairwise_when_sleeves_have_gaps():
+    # Regression for P2-B: differential missingness (one sleeve started later) must
+    # align on the common observed window, not silently use pandas' pairwise-complete
+    # .cov() default, which is not guaranteed PSD under differential missingness.
+    idx = pd.RangeIndex(200)
+    rng = np.random.default_rng(7)
+    a = pd.Series(rng.normal(0, 0.01, 200), index=idx)
+    b = pd.Series(rng.normal(0, 0.01, 200), index=idx)
+    b.iloc[:150] = np.nan  # "tf" sleeve only has 50 real observations
+    shares, diag = marginal_risk_contributions_diagnostics(
+        {"a": a, "b": b}, {"a": 0.5, "b": 0.5}, min_periods=30,
+    )
+    assert diag["n_periods"] == 50  # the common window, not the raw 200-row length
+    assert sum(shares.values()) == pytest.approx(1.0, abs=1e-6)

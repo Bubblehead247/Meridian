@@ -55,5 +55,8 @@ def run_backtest_stage(
         model=model.name,
         scorecard=card,
         passed=passes_metric_bar(card, criteria),
-        detail={"n_periods": card.get("n_periods", 0), "n_trades": card.get("n_trades", 0)},
+        detail={
+            "n_periods": card.get("n_periods", 0), "n_trades": card.get("n_trades", 0),
+            "fill_realism": result.meta.get("fill_realism", "close_approx"),
+        },
     )

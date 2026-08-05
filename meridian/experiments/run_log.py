@@ -112,3 +112,58 @@ def read_runs(path: str | Path = DEFAULT_RUN_LOG) -> list[RunRecord]:
         except Exception:
             pass
     return out
+
+
+#: Run kinds that represent an estimator search (as opposed to e.g. a graduation
+#: criteria override) and therefore contribute to cumulative trial counting below.
+_SEARCH_KINDS = ("validation", "universe_validation")
+
+
+def cumulative_trial_count(
+    path: str | Path = DEFAULT_RUN_LOG, *, scope: object = None,
+) -> int:
+    """Count of distinct (estimator, deviation, window) trials ever logged.
+
+    DSR and the BH/Bonferroni correction (``validation/pipeline.py``,
+    ``portfolio/validation.py``) only know about the estimators passed into a single
+    ``validate()``/``validate_universe()`` call — repeating that call across separate
+    research sessions faces no additional multiple-testing penalty, because nothing
+    tracked how many distinct trials had already been run against the same data. This
+    reads the append-only run log and counts the union of distinct trials across every
+    matching logged run, so a caller can see the *true* cumulative search size instead
+    of just the current call's ``len(estimators)`` — see
+    research_integrity_gap_analysis.md §3.5/P1-A.
+
+    This is deliberately a narrower, single-number complement to full research-lineage
+    tracking (parent experiments, hypotheses, promotion decisions, etc.) — that is a
+    separate, larger project (the gap analysis's Priority 1 item), not something this
+    function attempts.
+
+    Args:
+        path: Run log to read.
+        scope: When given, only runs whose logged ``meta["scope"]`` matches exactly
+            (JSON-comparable equality, e.g. a sorted symbol list) are counted — so a
+            SPY-only research line isn't inflated by an unrelated universe's trials.
+            When None, every logged run counts (an upper bound across all research,
+            not scoped to one dataset).
+
+    Returns:
+        The number of distinct (estimator, deviation, window) tuples across all
+        matching runs. 0 if the log is empty/missing or no run recorded an
+        ``estimators`` list in its meta (older logs predate this field).
+    """
+    trials: set[tuple[str, str | None, object]] = set()
+    for rec in read_runs(path):
+        if rec.kind not in _SEARCH_KINDS:
+            continue
+        meta = rec.meta or {}
+        if scope is not None and meta.get("scope") != scope:
+            continue
+        estimators = meta.get("estimators")
+        if not estimators:
+            continue
+        deviation = meta.get("deviation")
+        window = meta.get("window")
+        for est in estimators:
+            trials.add((est, deviation, window))
+    return len(trials)

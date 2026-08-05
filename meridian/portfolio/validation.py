@@ -23,6 +23,10 @@ from meridian.validation.bootstrap import block_bootstrap_sharpe
 from meridian.validation.correction import correct
 from meridian.validation.deflated_sharpe import deflated_sharpe_ratio
 from meridian.validation.effective_tests import effective_num_tests
+from meridian.validation.external_benchmarks import (
+    HARVEY_LIU_ZHU_T_THRESHOLD,
+    classical_t_stat,
+)
 from meridian.validation.stats import sharpe, total_return
 from meridian.validation.walkforward import WalkForwardSpec, make_folds
 
@@ -90,12 +94,15 @@ def validate_universe(
 
     Returns a ranked verdict table (same columns as the single-asset
     `validate`, plus `n_symbols`), sorted by out-of-sample Sharpe. Also
-    includes `validate()`'s Phase 2 robustness columns — `dsr_pvalue`
-    (Deflated Sharpe Ratio), `m_eff`/`q_value_eff`/`significant_eff`
-    (collinearity-adjusted correction) — computed the same way, reusing the
-    stitched OOS return series this function already builds per estimator.
-    `q_value`/`significant` remain the raw-m correction for backward
-    compatibility, unchanged by the additions.
+    includes `validate()`'s Phase 2 robustness columns — `dsr_pvalue`/
+    `dsr_pvalue_eff` (Deflated Sharpe Ratio at the raw and collinearity-adjusted
+    trial counts, respectively — see `validate()`'s docstring for why both exist),
+    `m_eff`/`q_value_eff`/`significant_eff` (collinearity-adjusted correction) and
+    `t_stat_classical`/`significant_hlz` (Harvey-Liu-Zhu external t>3 benchmark, see
+    `validation/external_benchmarks.py`) — computed the same way, reusing the stitched
+    OOS return series this function already builds per estimator. `q_value`/
+    `significant`/`dsr_pvalue` remain the raw-m versions for backward compatibility,
+    unchanged by the additions.
     """
     idx = union_index(prices_by_symbol) if align == "union" else common_index(prices_by_symbol)
     spec = spec or WalkForwardSpec()
@@ -129,6 +136,7 @@ def validate_universe(
         mc_p = _portfolio_mc_pvalue(
             held_oos, ret_oos, n=n_mc, periods_per_year=periods_per_year, seed=seed
         )
+        t_stat = classical_t_stat(stitched)
         rows.append(
             {
                 "estimator": est,
@@ -138,8 +146,12 @@ def validate_universe(
                 "boot_ci_high": boot["ci_high"],
                 "mc_pvalue": mc_p,
                 "n_symbols": len(prices_by_symbol),
+                "t_stat_classical": t_stat,
+                "significant_hlz": bool(t_stat == t_stat and abs(t_stat) > HARVEY_LIU_ZHU_T_THRESHOLD),
             }
         )
+
+    m_eff = effective_num_tests(returns_by_estimator)
 
     trial_sharpes = list(per_period_sharpes.values())
     dsr_pvalues = [
@@ -148,16 +160,22 @@ def validate_universe(
         )["dsr_pvalue"]
         for est in estimators
     ]
+    dsr_pvalues_eff = [
+        deflated_sharpe_ratio(
+            returns_by_estimator[est], trial_sharpes=trial_sharpes, n_trials=m_eff
+        )["dsr_pvalue"]
+        for est in estimators
+    ]
 
     df = pd.DataFrame(rows)
     df["dsr_pvalue"] = dsr_pvalues
+    df["dsr_pvalue_eff"] = dsr_pvalues_eff
 
     pvals = df["mc_pvalue"].fillna(1.0).to_numpy()
     res_raw = correct(pvals, method=method, alpha=alpha)
     q_col_raw = res_raw["qvalues"] if method == "bh" else res_raw["adjusted"]
     df = df.assign(q_value=q_col_raw, significant=res_raw["reject"])
 
-    m_eff = effective_num_tests(returns_by_estimator)
     res_eff = correct(pvals, method=method, alpha=alpha, m_eff=m_eff)
     q_col_eff = res_eff["qvalues"] if method == "bh" else res_eff["adjusted"]
     df = df.assign(m_eff=m_eff, q_value_eff=q_col_eff, significant_eff=res_eff["reject"])

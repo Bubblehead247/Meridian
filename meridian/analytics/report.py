@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from meridian.validation.external_benchmarks import HARVEY_LIU_ZHU_T_THRESHOLD
+
 # The disclosures every report must carry (CLAUDE.md "Known Limitations").
 _DISCLOSURES = """## Limitations and disclosures
 
@@ -27,6 +29,15 @@ _DISCLOSURES = """## Limitations and disclosures
   out-of-sample. In-sample figures (if any) are sanity checks, not results.
 - **Transaction costs** are modeled as flat basis points on turnover; real
   slippage, spread, impact, and borrow costs will differ.
+- **Short mechanics.** Short positions in this backtest are frictionless: no
+  borrow cost, no dividends owed, no hard-to-borrow/locate constraints, and no
+  asymmetric execution vs. longs. Separately, the live/paper execution path
+  (``execution/live_runner.py``) currently flattens every short signal to no
+  position — a short-capable strategy's backtested P&L therefore includes
+  trades that would never actually be taken live under the current execution
+  code, not just trades taken at an optimistic cost. Do not treat a backtest
+  Sharpe as achievable live for any strategy whose signal path takes short
+  positions until this is resolved.
 """
 
 
@@ -86,6 +97,13 @@ def build_validation_report(
                 "constituent dataset (`data/survivorship.py`) — membership is gated "
                 "to each date, including names later delisted."
             )
+            if "survivorship_coverage_warning" in meta:
+                parts.append(
+                    f"> **⚠ Coverage gap:** the dataset's actual price coverage is "
+                    f"{meta['survivorship_coverage_warning']} Do not read this run as "
+                    "validating the full requested window — only the covered subset "
+                    "was actually tested."
+                )
         parts.append("")
 
     # Setup / configuration
@@ -123,13 +141,13 @@ def build_validation_report(
     parts.append(_table_md(table))
     parts.append("")
 
-    _append_robustness_section(parts, table)
+    _append_robustness_section(parts, table, meta)
 
     parts.append(_DISCLOSURES)
     return "\n".join(parts)
 
 
-def _append_robustness_section(parts: list[str], table: pd.DataFrame) -> None:
+def _append_robustness_section(parts: list[str], table: pd.DataFrame, meta: dict) -> None:
     """Phase 2 additions: collinearity-adjusted correction, DSR, sensitivity.
 
     Purely additive to the report — never changes the headline ``## Verdict``
@@ -138,11 +156,28 @@ def _append_robustness_section(parts: list[str], table: pd.DataFrame) -> None:
     has_eff = "m_eff" in table.columns and "significant_eff" in table.columns
     has_dsr = "dsr_pvalue" in table.columns
     has_sensitivity = "sharpe_sign_stable" in table.columns
-    if not (has_eff or has_dsr or has_sensitivity):
+    has_cumulative = "cumulative_trial_count" in meta
+    has_pbo = "pbo" in table.columns
+    has_hlz = "t_stat_classical" in table.columns
+    if not (has_eff or has_dsr or has_sensitivity or has_cumulative or has_pbo or has_hlz):
         return
 
     parts.append("## Robustness")
     parts.append("")
+
+    if has_cumulative:
+        cum = meta["cumulative_trial_count"]
+        m_raw = len(table)
+        parts.append(
+            f"- **Cumulative research history.** `q_value`/`dsr_pvalue` above account "
+            f"only for the `m={m_raw}` estimators tested *in this run*. Across every "
+            f"logged run against this same symbol/universe scope "
+            f"(`reports/run_log.jsonl`), **{cum} distinct (estimator, deviation, "
+            f"window) trials have been tried in total.** If {cum} > {m_raw}, this run "
+            f"is not a fresh, unpenalized look at the data — treat the correction "
+            f"above as understating the true multiple-testing burden."
+        )
+        parts.append("")
 
     if has_eff:
         m_eff = table["m_eff"].iloc[0]
@@ -173,6 +208,48 @@ def _append_robustness_section(parts: list[str], table: pd.DataFrame) -> None:
             f"exceeds the expected best-of-N maximum under zero skill, given how many "
             f"estimators were tried. Unlike a normal p-value, *higher* is more "
             f"significant (commonly read as significant above ~0.95)."
+        )
+        if "dsr_pvalue_eff" in table.columns:
+            parts.append(
+                f"  Using the collinearity-adjusted trial count (`m_eff`) instead of "
+                f"the raw estimator count: `dsr_pvalue_eff={_fmt(best['dsr_pvalue_eff'])}`. "
+                f"These can disagree — `dsr_pvalue` (raw m) is the conservative, "
+                f"backward-compatible default; `dsr_pvalue_eff` is the internally-"
+                f"consistent one (same trial count as `q_value_eff` above). Neither is "
+                f"cumulative across separate validation runs against this data — see "
+                f"the run log for that."
+            )
+        parts.append("")
+
+    if has_hlz:
+        best = table.iloc[0]
+        n_clear = int(table["significant_hlz"].sum())
+        parts.append(
+            f"- **External benchmark (Harvey-Liu-Zhu).** {n_clear} of {len(table)} "
+            f"estimator(s) clear the classical `|t| > {HARVEY_LIU_ZHU_T_THRESHOLD:.1f}` "
+            f"hurdle Harvey, Liu & Zhu (2016) recommend for a *newly proposed* factor, "
+            f"given how much data-mining has occurred across the finance literature as "
+            f"a whole — a stricter, independently-sourced skepticism check, not a "
+            f"fourth correction stacked on top of the ones above. Best performer "
+            f"`{best['estimator']}`: `t_stat_classical={_fmt(best['t_stat_classical'])}`. "
+            f"This t-statistic does not correct for serial correlation (unlike the "
+            f"block bootstrap above) or non-normality (unlike DSR) — it is "
+            f"deliberately the crude textbook version the 3.0 hurdle is calibrated "
+            f"against."
+        )
+        parts.append("")
+
+    if has_pbo:
+        pbo = table["pbo"].iloc[0]
+        parts.append(
+            f"- **Probability of Backtest Overfitting (CPCV/PBO)**: `pbo={_fmt(pbo)}`. "
+            f"Across many resampled train/test partitions of this same data, this is "
+            f"how often the in-sample-best estimator ranked at or below the "
+            f"out-of-sample median — i.e. how often picking 'the winner' would have "
+            f"picked noise. Complements (does not replace) walk-forward/bootstrap/DSR "
+            f"above; the exact formula's numerical output is not independently "
+            f"verified against its primary source — see `validation/cpcv.py`'s "
+            f"docstring for exactly what is and isn't confirmed."
         )
         parts.append("")
 

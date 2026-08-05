@@ -103,6 +103,32 @@ def test_report_includes_mandatory_disclosures():
     assert "transaction cost" in low
 
 
+def test_report_includes_short_mechanics_disclosure():
+    # P3: shorts are frictionless in the backtest AND the live/paper path currently
+    # flattens every short signal to no position — both facts must be disclosed, not
+    # just "shorts have no borrow cost."
+    md = build_validation_report(_fake_table())
+    low = md.lower()
+    assert "short mechanics" in low
+    assert "borrow" in low
+    assert "flattens every short signal" in low
+
+
+def test_report_hlz_robustness_section():
+    table = _fake_table()
+    table["t_stat_classical"] = [4.2, 1.1, -0.5]
+    table["significant_hlz"] = [True, False, False]
+    md = build_validation_report(table)
+    assert "Harvey-Liu-Zhu" in md
+    assert "1 of 3" in md
+    assert "t_stat_classical=4.200" in md
+
+
+def test_report_no_hlz_section_without_columns():
+    md = build_validation_report(_fake_table())
+    assert "Harvey-Liu-Zhu" not in md
+
+
 def test_report_no_significant_verdict():
     md = build_validation_report(_fake_table(significant=False))
     assert "No estimator is statistically significant" in md
@@ -138,6 +164,26 @@ def test_banner_flags_biased_run():
 def test_banner_flags_point_in_time_run():
     md = build_validation_report(_fake_table(), meta={"survivorship_biased": False})
     assert "Point-in-time universe" in md
+
+
+def test_banner_flags_point_in_time_run_with_coverage_gap():
+    # Regression for P1-E: a "point-in-time" run whose requested window exceeds the
+    # dataset's actual price coverage must say so, not just claim bias-free membership.
+    md = build_validation_report(
+        _fake_table(),
+        meta={
+            "survivorship_biased": False,
+            "survivorship_coverage_warning": "requested window [2010-01-01, 2019-12-31] "
+            "extends beyond this dataset's actual price coverage [2013-01-28, 2018-02-28]",
+        },
+    )
+    assert "Coverage gap" in md
+    assert "2013-01-28" in md
+
+
+def test_banner_point_in_time_run_without_coverage_gap_has_no_warning():
+    md = build_validation_report(_fake_table(), meta={"survivorship_biased": False})
+    assert "Coverage gap" not in md
 
 
 # --- robustness section (Phase 2: m_eff, DSR, sensitivity) -----------------

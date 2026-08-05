@@ -26,6 +26,8 @@ import pytest
 def _never_touch_the_real_ledger(monkeypatch, tmp_path):
     """Redirect every default ledger path to a temp directory."""
     from meridian.execution import positions, reconcile
+    from meridian.experiments import run_log
+    from meridian.pipeline import oos_guard
     from meridian.portfolio import sleeve_ledgers
 
     ledger = tmp_path / "ledger"
@@ -36,6 +38,12 @@ def _never_touch_the_real_ledger(monkeypatch, tmp_path):
     monkeypatch.setattr(reconcile, "TRADE_LOG_FILE", ledger / "trade_log.jsonl")
     monkeypatch.setattr(sleeve_ledgers, "TRADE_LOG_FILE", ledger / "trade_log.jsonl")
     monkeypatch.setattr(sleeve_ledgers, "SLEEVE_LEDGER_DIR", ledger / "sleeves")
+    # OOSGuard now defaults to on (P1-B) — without this, every test that runs the OOS
+    # stage would write real run-count files into the repo's ledger/oos_runs/.
+    monkeypatch.setattr(oos_guard, "DEFAULT_GUARD_DIR", ledger / "oos_runs")
+    # A graduation-criteria-version override (P1-C) logs to run_log.jsonl — redirect it
+    # too, same reasoning as above.
+    monkeypatch.setattr(run_log, "DEFAULT_RUN_LOG", ledger / "run_log.jsonl")
 
 
 @pytest.fixture(autouse=True)

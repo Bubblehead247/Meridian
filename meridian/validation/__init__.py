@@ -8,6 +8,11 @@ significance-tested results.
 
 from meridian.validation.bootstrap import block_bootstrap_sharpe
 from meridian.validation.correction import benjamini_hochberg, bonferroni, correct
+from meridian.validation.cpcv import (
+    CPCVSplit,
+    make_cpcv_splits,
+    probability_of_backtest_overfitting,
+)
 from meridian.validation.deflated_sharpe import (
     deflated_sharpe_ratio,
     expected_max_sharpe,
@@ -15,6 +20,11 @@ from meridian.validation.deflated_sharpe import (
     sharpe_ratio_stdev,
 )
 from meridian.validation.effective_tests import effective_num_tests
+from meridian.validation.external_benchmarks import (
+    HARVEY_LIU_ZHU_T_THRESHOLD,
+    classical_t_stat,
+    clears_harvey_liu_zhu_bar,
+)
 from meridian.validation.montecarlo import monte_carlo_pvalue
 from meridian.validation.pipeline import validate
 from meridian.validation.sensitivity import parameter_sensitivity
@@ -50,4 +60,10 @@ __all__ = [
     "deflated_sharpe_ratio",
     "effective_num_tests",
     "parameter_sensitivity",
+    "CPCVSplit",
+    "make_cpcv_splits",
+    "probability_of_backtest_overfitting",
+    "classical_t_stat",
+    "clears_harvey_liu_zhu_bar",
+    "HARVEY_LIU_ZHU_T_THRESHOLD",
 ]

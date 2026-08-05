@@ -51,6 +51,14 @@ _INDEX_SOURCES: dict[str, tuple[str, str]] = {
 #: Names of every universe Meridian knows about.
 KNOWN_UNIVERSES: tuple[str, ...] = tuple(_ETF_UNIVERSES) + tuple(_INDEX_SOURCES)
 
+#: Universes backed by a Wikipedia constituent list (as opposed to a fixed ETF ticker).
+#: ``get_universe`` always returns *today's* membership for these — there is no date
+#: parameter — so using one of these names for a historical backtest is both a
+#: survivorship-bias and a look-ahead leak (see the module docstring). Callers that run
+#: research/backtests against a named universe should gate on this and require an
+#: explicit acknowledgement rather than silently resolving today's list.
+INDEX_UNIVERSES: tuple[str, ...] = tuple(_INDEX_SOURCES)
+
 
 def _normalize_symbol(sym: str) -> str:
     """Make a raw ticker yfinance-friendly (e.g. ``BRK.B`` -> ``BRK-B``)."""

@@ -19,6 +19,7 @@ from meridian.portfolio.correlation import (
 from meridian.portfolio.ledger import (
     STAGES,
     LedgerStore,
+    StaleLedgerWrite,
     StrategyLedger,
     list_ledgers,
     load_ledger,
@@ -32,12 +33,15 @@ from meridian.portfolio.monthly_review import (
 )
 from meridian.portfolio.portfolio import PortfolioResult, backtest_portfolio
 from meridian.portfolio.risk_budget import (
+    DEFAULT_COND_THRESHOLD,
+    DEFAULT_MIN_COV_PERIODS,
     RiskLimits,
     allocate_heat_budget,
     apply_risk_contributions,
     check_suspension,
     compute_portfolio_heat,
     marginal_risk_contributions,
+    marginal_risk_contributions_diagnostics,
     portfolio_heat_breached,
     risk_contributions,
     strategy_heat,
@@ -65,6 +69,7 @@ __all__ = [
     "validate_universe",
     "StrategyLedger",
     "LedgerStore",
+    "StaleLedgerWrite",
     "STAGES",
     "save_ledger",
     "load_ledger",
@@ -78,6 +83,9 @@ __all__ = [
     "allocate_heat_budget",
     "risk_contributions",
     "marginal_risk_contributions",
+    "marginal_risk_contributions_diagnostics",
+    "DEFAULT_MIN_COV_PERIODS",
+    "DEFAULT_COND_THRESHOLD",
     "apply_risk_contributions",
     "check_suspension",
     "portfolio_heat_breached",

@@ -60,7 +60,7 @@ def test_fund_network_error_is_graceful(monkeypatch, capsys):
         raise URLError("HTTP Error 403: Forbidden")
 
     monkeypatch.setattr(universe_mod, "get_universe", boom)
-    rc = cli.main(["fund", "--universe", "SP500"])
+    rc = cli.main(["fund", "--universe", "SP500", "--accept-survivorship-bias"])
     assert rc == 1                                   # clean exit, no traceback
     assert "data fetch failed" in capsys.readouterr().err
 

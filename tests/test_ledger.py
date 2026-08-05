@@ -6,7 +6,15 @@ import math
 
 import pytest
 
-from meridian.portfolio import LedgerStore, StrategyLedger, load_ledger, save_ledger
+import json
+
+from meridian.portfolio import (
+    LedgerStore,
+    StaleLedgerWrite,
+    StrategyLedger,
+    load_ledger,
+    save_ledger,
+)
 
 
 def _led(**kw) -> StrategyLedger:
@@ -101,3 +109,69 @@ def test_module_level_convenience(tmp_path):
     led = _led(name="trend", family="trend_following")
     save_ledger(led, store)
     assert load_ledger("trend", store) == led
+
+
+# --- ledger integrity: versioning, history, atomic writes (P2-D) ------------
+
+def test_new_ledger_starts_at_version_zero():
+    assert _led().version == 0
+
+
+def test_save_increments_version_and_appends_history(tmp_path):
+    store = LedgerStore(tmp_path)
+    led = _led()
+    store.save(led)
+    assert led.version == 1
+    store.save(led)
+    assert led.version == 2
+
+    history = (tmp_path / "history.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(history) == 2
+    rec1, rec2 = (json.loads(line) for line in history)
+    assert rec1["version"] == 1 and rec2["version"] == 2
+    assert rec1["name"] == "mr" == rec2["name"]
+
+
+def test_stale_write_is_refused_by_default(tmp_path):
+    store = LedgerStore(tmp_path)
+    led = _led()
+    store.save(led)                     # version 1 on disk
+    stale_copy = store.load("mr")       # a second reader loads version 1
+    store.save(led)                     # a different writer advances to version 2
+
+    stale_copy.record_trade(10.0)       # the stale copy is edited...
+    with pytest.raises(StaleLedgerWrite):
+        store.save(stale_copy)          # ...and must not silently overwrite version 2
+
+    assert store.load("mr").version == 2  # on-disk state is untouched by the refused write
+
+
+def test_stale_write_succeeds_with_force(tmp_path):
+    store = LedgerStore(tmp_path)
+    led = _led()
+    store.save(led)
+    stale_copy = store.load("mr")
+    store.save(led)
+
+    stale_copy.record_trade(10.0)
+    store.save(stale_copy, force=True)
+    assert store.load("mr").realized_pnl == 10.0
+
+
+def test_save_is_atomic_no_temp_files_left_behind(tmp_path):
+    store = LedgerStore(tmp_path)
+    store.save(_led())
+    leftovers = list(tmp_path.glob(".*.tmp"))
+    assert leftovers == []
+
+
+def test_history_survives_repeated_saves_of_different_strategies(tmp_path):
+    store = LedgerStore(tmp_path)
+    store.save(_led(name="mr", family="mean_reversion"))
+    store.save(_led(name="tf", family="trend_following"))
+    history = (tmp_path / "history.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(history) == 2
+    names = {json.loads(line)["name"] for line in history}
+    assert names == {"mr", "tf"}
+    # history.jsonl must not be picked up by list()/all() as a strategy ledger
+    assert "history" not in store.list()

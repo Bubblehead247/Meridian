@@ -176,6 +176,55 @@ def test_run_validation_report_appends_not_overwrites(tmp_path):
     assert (tmp_path / "r.md").exists()  # report itself is still overwritten each run
 
 
+def test_run_validation_report_discloses_cumulative_trial_count(tmp_path):
+    # Regression for P1-A: dsr_pvalue/q_value only ever accounted for the current
+    # call's estimator list, with no visibility into how many distinct trials had
+    # already been run against the same symbol in prior sessions. Re-running the same
+    # 2-estimator config twice must not silently reset the count back to 2 each time —
+    # the report must disclose that this is the *second* look, not a fresh one.
+    px = _mr()
+    cfg = _cfg(tmp_path)
+    runner.run_validation_report(cfg, px, _bars(px))  # first run: sma, ema -> 2 trials
+
+    cfg2 = _cfg(tmp_path)
+    cfg2["estimators"] = ["sma", "ou"]  # overlaps on "sma", adds "ou" -> 3 distinct total
+    table, path = runner.run_validation_report(cfg2, px, _bars(px))
+
+    report = (tmp_path / "r.md").read_text(encoding="utf-8")
+    assert "Cumulative research history" in report
+    assert "3 distinct" in report
+    assert "m=2" in report  # this run's own raw trial count, for contrast
+
+
+def test_cumulative_trial_count_scopes_by_symbol(tmp_path):
+    from meridian.experiments.run_log import append_run, cumulative_trial_count, new_run_record
+
+    log_path = tmp_path / "run_log.jsonl"
+
+    def _log(symbols, estimators):
+        append_run(new_run_record(
+            config_path="c.yaml", raw_config_text=None, kind="validation",
+            meta={"estimators": estimators, "deviation": "zscore", "window": 20,
+                  "scope": sorted(symbols)},
+            report_path=None, summary={},
+        ), path=log_path)
+
+    _log(["SPY"], ["sma", "ema"])
+    _log(["SPY"], ["sma", "ou"])       # "sma" repeats; "ou" is new -> 3 distinct for SPY
+    _log(["QQQ"], ["sma", "ema", "ou"])  # different symbol -> must not inflate SPY's count
+
+    assert cumulative_trial_count(log_path, scope=["SPY"]) == 3
+    assert cumulative_trial_count(log_path, scope=["QQQ"]) == 3
+    assert cumulative_trial_count(log_path) == 3  # union across all symbols is still 3 distinct
+    assert cumulative_trial_count(log_path, scope=["MSFT"]) == 0  # never logged
+
+
+def test_cumulative_trial_count_empty_log_is_zero(tmp_path):
+    from meridian.experiments.run_log import cumulative_trial_count
+
+    assert cumulative_trial_count(tmp_path / "does_not_exist.jsonl") == 0
+
+
 def test_run_log_handles_non_json_native_meta_values(tmp_path):
     """YAML dates parse as datetime.date (e.g. `start: 2010-01-01` unquoted); must not crash."""
     import datetime

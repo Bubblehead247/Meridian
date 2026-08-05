@@ -47,20 +47,35 @@ def run_pipeline(
     as_of: str | None = None,
     stop_on_fail: bool = True,
     oos_guard: OOSGuard | None = None,
+    track_oos_runs: bool = True,
     symbol: str | None = None,
+    allow_criteria_override: bool = False,
+    override_reason: str | None = None,
 ) -> dict[str, StageResult]:
     """Walk ``model`` through ``stages`` in order; advance ``ledger`` from each scorecard.
 
     Returns ``{stage: StageResult}``. When a ``ledger`` is given, each stage's scorecard is
     fed to ``graduation.advance`` (the resulting action is stored on the StageResult's
     ``detail['ledger_action']``). With ``stop_on_fail`` the walk halts at the first stage
-    that does not clear the metric bar. ``oos_guard``/``symbol`` are forwarded to the OOS
-    stage's run-counter (see ``pipeline/oos_guard.py``); both optional and non-blocking.
+    that does not clear the metric bar.
+
+    OOS run-counting (``pipeline/oos_guard.py``) is on by default — every call that
+    reaches the ``oos`` stage records a run against (``model.family``, ``model.name``,
+    ``symbol``) and stamps the resulting count on ``detail["oos_run_count"]``, so a
+    repeated evaluation of the "final" holdout is visible rather than silently absorbed.
+    It is non-blocking: a repeat still executes and returns normally, just flagged. Pass
+    an explicit ``oos_guard`` to point at a non-default counter store, or
+    ``track_oos_runs=False`` to opt out entirely (e.g. throwaway/what-if runs that
+    should not count as a holdout touch).
     """
     if criteria is None:
         criteria = (
             criteria_for_family(ledger.family) if ledger is not None else GraduationCriteria()
         )
+    if oos_guard is None and track_oos_runs:
+        oos_guard = OOSGuard()
+    if symbol is None and ledger is not None:
+        symbol = ledger.name
     common = dict(
         cost_bps=cost_bps, bars=bars, regime_frame=regime_frame,
         periods_per_year=periods_per_year, criteria=criteria,
@@ -88,7 +103,8 @@ def run_pipeline(
                 if stage in ("walk_forward", "oos") else criteria
             )
             res.detail["ledger_action"] = advance(
-                ledger, res.scorecard, as_of=as_of, criteria=adv_criteria
+                ledger, res.scorecard, as_of=as_of, criteria=adv_criteria,
+                allow_criteria_override=allow_criteria_override, override_reason=override_reason,
             )
         results[stage] = res
         if stop_on_fail and not res.passed:
@@ -103,12 +119,18 @@ def run_cross_sectional_pipeline(
     ledger: StrategyLedger | None = None,
     stages: tuple[str, ...] = DEFAULT_STAGES,
     cost_bps: float = 1.0,
+    bars_by_symbol: dict[str, pd.DataFrame] | None = None,
     periods_per_year: int = 252,
     criteria: GraduationCriteria | None = None,
     wf_spec=None,
     oos_spec=None,
     as_of: str | None = None,
     stop_on_fail: bool = True,
+    oos_guard: OOSGuard | None = None,
+    track_oos_runs: bool = True,
+    basket: str | None = None,
+    allow_criteria_override: bool = False,
+    override_reason: str | None = None,
 ) -> dict[str, StageResult]:
     """Walk a CrossSectionalModel through pipeline stages on a basket of price series.
 
@@ -116,6 +138,15 @@ def run_cross_sectional_pipeline(
     single-asset Series.  The model is backtested once over full history (causal, no
     lookahead) and the walk-forward / OOS windows are sliced from that one result, so
     no stage re-runs the model — the same pattern as single-asset anchored walk-forward.
+
+    ``bars_by_symbol`` (optional OHLC per symbol) enables next-open fills, same as
+    ``CrossSectionalModel.backtest``. Without it, fills silently fall back to the same
+    close the signal was computed from — the resulting ``meta["fill_realism"]`` is
+    surfaced on every stage's ``detail`` so that degradation is never silent.
+
+    OOS run-counting is on by default, same as ``run_pipeline`` — see that docstring.
+    ``basket`` names the (family, model, basket) key for the counter; it defaults to the
+    sorted, joined symbol list when omitted.
 
     Returns ``{stage: StageResult}`` with proper turnover, n_trades, and
     avg_holding_period metrics (derived from the portfolio weight frame).
@@ -128,14 +159,20 @@ def run_cross_sectional_pipeline(
         criteria = (
             criteria_for_family(ledger.family) if ledger is not None else GraduationCriteria()
         )
+    if oos_guard is None and track_oos_runs:
+        oos_guard = OOSGuard()
+    if basket is None:
+        basket = "_".join(sorted(prices_by_symbol))
 
-    result = model.backtest(prices_by_symbol, cost_bps=cost_bps)
+    result = model.backtest(prices_by_symbol, cost_bps=cost_bps, bars_by_symbol=bars_by_symbol)
+    fill_realism = result.meta.get("fill_realism", "close_approx")
     n = len(result.returns)
 
     def _score(index) -> dict:
         return scorecard_from_portfolio(result, index=index, periods_per_year=periods_per_year)
 
     def _stage_result(stage_name: str, card: dict, passed: bool, **detail) -> StageResult:
+        detail.setdefault("fill_realism", fill_realism)
         res = StageResult(
             stage=stage_name, model=model.name, scorecard=card, passed=passed, detail=detail
         )
@@ -144,7 +181,10 @@ def run_cross_sectional_pipeline(
                 dataclasses.replace(criteria, min_periods=0)
                 if stage_name in ("walk_forward", "oos") else criteria
             )
-            res.detail["ledger_action"] = advance(ledger, card, as_of=as_of, criteria=adv_criteria)
+            res.detail["ledger_action"] = advance(
+                ledger, card, as_of=as_of, criteria=adv_criteria,
+                allow_criteria_override=allow_criteria_override, override_reason=override_reason,
+            )
         return res
 
     results: dict[str, StageResult] = {}
@@ -184,7 +224,11 @@ def run_cross_sectional_pipeline(
                     is_card = _score(is_ret.index)
                     comparison = compare_oos_to_is(oos_card, is_card)
                 passed = passes_metric_bar(oos_card, oos_crit) and not comparison["degraded"]
-                res = _stage_result("oos", oos_card, passed, n_oos=len(oos_ret), **comparison)
+                oos_detail = dict(n_oos=len(oos_ret), **comparison)
+                if oos_guard is not None:
+                    run_rec = oos_guard.record_run(model.family or "unknown", model.name or "unknown", basket)
+                    oos_detail["oos_run_count"] = run_rec.run_count
+                res = _stage_result("oos", oos_card, passed, **oos_detail)
 
         else:
             raise KeyError(f"unknown stage {stage!r}. Known: backtest, walk_forward, oos")

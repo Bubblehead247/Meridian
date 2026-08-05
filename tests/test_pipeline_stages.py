@@ -9,8 +9,10 @@ import pytest
 from meridian.families import create_model
 from meridian.pipeline import (
     OOSGuard,
+    GraduationCriteria,
     StageResult,
     advance,
+    check_stale,
     compare_oos_to_is,
     criteria_for_family,
     passes_metric_bar,
@@ -113,6 +115,111 @@ def test_run_pipeline_forwards_guard_to_oos_stage(tmp_path):
         oos_guard=guard, symbol="SPY",
     )
     assert results2["oos"].detail["oos_run_count"] == 2
+
+
+def test_run_pipeline_tracks_oos_runs_by_default(monkeypatch, tmp_path):
+    # Regression for P1-B: OOSGuard existed but nothing ever instantiated it, so the
+    # "final" holdout could be re-run indefinitely with no record. run_pipeline must
+    # now track by default, with no explicit oos_guard/symbol required from the caller.
+    from meridian.pipeline import oos_guard as oos_guard_mod
+
+    monkeypatch.setattr(oos_guard_mod, "DEFAULT_GUARD_DIR", tmp_path / "oos_runs")
+    prices = _prices(n=3200, start="2010-01-01")
+    ledger = StrategyLedger(name="zscore_reversion", family="mean_reversion", stage="research")
+    results = run_pipeline(_model(), prices, ledger=ledger, stages=("oos",), stop_on_fail=False)
+    assert results["oos"].detail["oos_run_count"] == 1
+    results2 = run_pipeline(_model(), prices, ledger=ledger, stages=("oos",), stop_on_fail=False)
+    assert results2["oos"].detail["oos_run_count"] == 2
+
+
+def test_run_pipeline_track_oos_runs_false_disables_counting(tmp_path):
+    guard_would_write_here = tmp_path / "oos_runs"
+    prices = _prices(n=3200, start="2010-01-01")
+    results = run_pipeline(
+        _model(), prices, stages=("oos",), stop_on_fail=False, track_oos_runs=False,
+    )
+    assert "oos_run_count" not in results["oos"].detail
+    assert not guard_would_write_here.exists()
+
+
+# --- graduation criteria versioning (P1-C) --------------------------------
+
+def test_advance_binds_criteria_version_on_first_call():
+    led = StrategyLedger(name="zscore_reversion", family="mean_reversion", stage="research")
+    assert led.criteria_version is None
+    criteria = criteria_for_family("mean_reversion")
+    advance(led, {"sharpe": -1.0}, criteria=criteria)
+    assert led.criteria_version == criteria.version
+
+
+def test_advance_rejects_a_different_criteria_version_without_override():
+    from meridian.pipeline.graduation import CriteriaVersionMismatch
+
+    led = StrategyLedger(name="zscore_reversion", family="mean_reversion", stage="research")
+    v1 = GraduationCriteria(min_sharpe=0.35, version="1.0.0")
+    v2 = GraduationCriteria(min_sharpe=0.50, version="2.0.0")
+    advance(led, {"sharpe": -1.0}, criteria=v1)
+    with pytest.raises(CriteriaVersionMismatch):
+        advance(led, {"sharpe": -1.0}, criteria=v2)
+    assert led.criteria_version == "1.0.0"  # rejected call must not have rebound it
+
+
+def test_advance_accepts_a_version_override_with_reason_and_logs_it(monkeypatch, tmp_path):
+    from meridian.experiments import run_log as run_log_mod
+
+    monkeypatch.setattr(run_log_mod, "DEFAULT_RUN_LOG", tmp_path / "run_log.jsonl")
+    led = StrategyLedger(name="zscore_reversion", family="mean_reversion", stage="research")
+    v1 = GraduationCriteria(min_sharpe=0.35, version="1.0.0")
+    v2 = GraduationCriteria(min_sharpe=0.50, version="2.0.0")
+    advance(led, {"sharpe": -1.0}, criteria=v1)
+    advance(
+        led, {"sharpe": -1.0}, criteria=v2,
+        allow_criteria_override=True, override_reason="deliberate threshold bump for a retest",
+    )
+    assert led.criteria_version == "2.0.0"
+    logged = run_log_mod.read_runs(tmp_path / "run_log.jsonl")
+    assert len(logged) == 1
+    assert logged[0].kind == "graduation_criteria_override"
+    assert logged[0].meta["from_version"] == "1.0.0"
+    assert logged[0].meta["to_version"] == "2.0.0"
+    assert "deliberate" in logged[0].meta["reason"]
+
+
+def test_advance_override_without_reason_raises():
+    led = StrategyLedger(name="zscore_reversion", family="mean_reversion", stage="research")
+    v1 = GraduationCriteria(version="1.0.0")
+    v2 = GraduationCriteria(version="2.0.0")
+    advance(led, {"sharpe": -1.0}, criteria=v1)
+    with pytest.raises(ValueError):
+        advance(led, {"sharpe": -1.0}, criteria=v2, allow_criteria_override=True)
+
+
+def test_load_criteria_config_missing_file_falls_back():
+    from meridian.pipeline.graduation import load_criteria_config
+
+    cfg = load_criteria_config("does/not/exist.yaml")
+    assert cfg["version"] == "1.0.0-fallback"
+    assert cfg["min_sharpe"] == 0.35
+
+
+# --- stage staleness (P1-C) -------------------------------------------------
+
+def test_check_stale_flags_a_pre_live_stage_past_its_dwell_limit():
+    led = StrategyLedger(name="x", family="mean_reversion", stage="research")
+    led.stage_entered = "2020-01-01"
+    assert check_stale(led, as_of="2026-01-01") is True
+
+
+def test_check_stale_false_within_the_dwell_limit():
+    led = StrategyLedger(name="x", family="mean_reversion", stage="research")
+    led.stage_entered = "2026-01-01"
+    assert check_stale(led, as_of="2026-01-10") is False
+
+
+def test_check_stale_false_for_live_stages():
+    led = StrategyLedger(name="x", family="mean_reversion", stage="elite")
+    led.stage_entered = "2010-01-01"
+    assert check_stale(led, as_of="2026-01-01") is False
 
 
 def test_compare_oos_to_is_flags_degradation():

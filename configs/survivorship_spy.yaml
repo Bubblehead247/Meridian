@@ -1,8 +1,13 @@
-# Survivorship-bias-free S&P 500 universe study using Teddy Koker's dataset
-# (point-in-time membership + delisted prices, ~2014-2018).
+# Survivorship-bias-free S&P 500 universe study (point-in-time membership +
+# delisted prices, 2010-01 to 2018-03 — see meridian/data/survivorship.py's
+# KNOWN_PRICE_COVERAGE for the authoritative range and its remaining gaps).
 #
 # Setup once:
 #   git clone https://github.com/teddykoker/survivorship-free-spy external/survivorship-free-spy
+#   Then regenerate the price data against the full available range (widened from the
+#   originally-shipped 2013-2018 slice — needs a free NASDAQ_DATA_LINK_API_KEY, see
+#   data.nasdaq.com/account/api):
+#     cd external/survivorship-free-spy/survivorship-free && python generate.py
 # Run:
 #   meridian universe configs/survivorship_spy.yaml
 #
@@ -17,8 +22,8 @@ data:
   source: survivorship
   root: external/survivorship-free-spy/survivorship-free
   variant: free            # free | survivor
-  start: 2014-01-01
-  end: 2018-03-01
+  start: 2010-01-04
+  end: 2018-03-27
   field: close
 
 estimators: [sma, ou, lsma, hull]
@@ -33,7 +38,7 @@ signal:
 
 validation:
   mode: anchored
-  min_train: 504           # ~2 years (the dataset is only ~5 years long)
+  min_train: 504           # ~2 years
   test_span: 126
   step: 126
   n_boot: 500

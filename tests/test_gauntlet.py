@@ -13,7 +13,7 @@ from meridian.experiments.gauntlet import (
 
 _COLS = [
     "family", "model", "passed", "sharpe", "cagr", "total_return",
-    "max_drawdown", "n_trades", "trades_per_year",
+    "max_drawdown", "n_trades", "trades_per_year", "fill_realism",
 ]
 
 

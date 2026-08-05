@@ -2,18 +2,31 @@
 
 yfinance and FinanceDatabase are both survivor snapshots: delisted/removed names
 are simply gone, which biases any historical backtest optimistically. This
-loader reads a *point-in-time* dataset instead — Teddy Koker's
-`survivorship-free-spy` (https://github.com/teddykoker/survivorship-free-spy) —
-which ships:
+loader reads a *point-in-time* dataset instead — originally Teddy Koker's
+`survivorship-free-spy` (https://github.com/teddykoker/survivorship-free-spy),
+regenerated in-place (P1-E follow-up) to widen its price coverage — which ships:
 
-- ``constituents.csv`` — monthly S&P 500 membership snapshots (each row:
-  ``date,"[ticker, ...]"``), so you know which names were in the index on any
-  past date, *including ones since removed*.
-- ``data/<TICKER>.csv`` — per-ticker OHLCV (from Quandl WIKI Prices), covering
-  delisted/removed names too. Coverage is roughly 2013–Feb 2018.
+- ``constituents.csv`` — monthly-ish S&P 500 membership snapshots (each row:
+  ``date,"[ticker, ...]"``, 2006-09-29 to 2019-04-29), so you know which names
+  were in the index on any past date, *including ones since removed*. This file
+  is vendored as-is and has at least one known gap: AAPL and GE are incorrectly
+  absent from several snapshots in 2010 (verified — both have been S&P 500
+  constituents since well before 2010; AAPL since 1982) despite genuinely
+  being members. This is a data-quality issue in the third-party source file
+  itself, not corrected here — treat any single-name absence in the early
+  (2010-2013) snapshots as unverified until cross-checked against another
+  source, even though membership presence elsewhere is reliable.
+- ``data/<TICKER>.csv`` — per-ticker OHLCV (from Nasdaq Data Link's WIKI/PRICES
+  table, the Quandl dataset's current home), covering delisted/removed names
+  too. Coverage is 2010-01-04 to 2018-03-27 — widened from the originally
+  shipped 2013-01 to 2018-02 slice by regenerating against the full available
+  WIKI/PRICES range (see ``external/survivorship-free-spy/survivorship-free/
+  generate.py``, which now requires a free NASDAQ_DATA_LINK_API_KEY rather than
+  a manually-placed bulk CSV and no longer depends on iShares' holdings page,
+  which stopped publishing historical data around 2020).
 
-The dataset is not vendored into this repo (it is ~19 MB and lives under
-``external/``); point ``SurvivorshipDataset`` at wherever you cloned it.
+The dataset is not vendored into this repo (it is regenerated locally under
+``external/``); point ``SurvivorshipDataset`` at wherever you generated it.
 
 The headline use is the bias measurement: run the *same* strategy on the
 point-in-time universe (`survivorship_free_universe`) vs the end-of-period
@@ -28,6 +41,35 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+#: Actual price-data coverage of the regenerated survivorship-free-spy dataset,
+#: verified directly against external/survivorship-free-spy/survivorship-free/
+#: data/*.csv. This is 82% of the project's DEFAULT_IN_SAMPLE window (2010-01-01 to
+#: 2019-12-31, see data/splits.py) — up from 44% before the P1-E follow-up regen. The
+#: remaining 2018-04 to 2019-12 gap is a hard limit of WIKI/PRICES itself (frozen
+#: since Quandl's April 2018 acquisition by Nasdaq), not something more re-fetching
+#: can close for free. A report that calls a run over this dataset "in-sample
+#: validated" without saying so is still overstating what was actually tested. See
+#: research_integrity_gap_analysis.md §3.3.
+KNOWN_PRICE_COVERAGE: tuple[str, str] = ("2010-01-04", "2018-03-27")
+
+
+def coverage_warning(start: str | None, end: str | None) -> str | None:
+    """Warn when a requested [start, end] window extends beyond the dataset's actual
+    coverage, so callers don't silently believe they validated a wider period than
+    the data supports. Returns None when the request is fully within coverage.
+    """
+    cov_start, cov_end = pd.Timestamp(KNOWN_PRICE_COVERAGE[0]), pd.Timestamp(KNOWN_PRICE_COVERAGE[1])
+    req_start = pd.Timestamp(start) if start else cov_start
+    req_end = pd.Timestamp(end) if end else cov_end
+    if req_start >= cov_start and req_end <= cov_end:
+        return None
+    return (
+        f"requested window [{req_start.date()}, {req_end.date()}] extends beyond this "
+        f"dataset's actual price coverage [{cov_start.date()}, {cov_end.date()}] — dates "
+        "outside coverage contribute no data, so the effective tested window is narrower "
+        "than requested."
+    )
 
 
 def _clean_ticker(t: str) -> str:

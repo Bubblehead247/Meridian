@@ -82,7 +82,10 @@ def run_universe_backtest_stage(
         model=model.name,
         scorecard=card,
         passed=passes_metric_bar(card, criteria),
-        detail={"n_symbols": len(prices_by_symbol), "n_periods": card.get("n_periods", 0)},
+        detail={
+            "n_symbols": len(prices_by_symbol), "n_periods": card.get("n_periods", 0),
+            "fill_realism": result.meta.get("fill_realism", "close_approx"),
+        },
     )
 
 
@@ -115,7 +118,8 @@ def run_universe_walk_forward_stage(
             else GraduationCriteria(min_periods=0),
         ),
         detail={"n_folds": len(folds), "oos_periods": int(len(oos)),
-                "n_symbols": len(prices_by_symbol)},
+                "n_symbols": len(prices_by_symbol),
+                "fill_realism": result.meta.get("fill_realism", "close_approx")},
     )
 
 
@@ -130,12 +134,16 @@ def run_universe_oos_stage(
     periods_per_year: int = 252,
     criteria: GraduationCriteria | None = None,
     tolerance: float = 0.5,
+    guard=None,
+    basket: str | None = None,
 ) -> StageResult:
     """Run a cross-sectional model on the fixed OOS holdout → scorecard → pass/fail.
 
     Slices every series in the universe to the OOS date window, backtests, and
     checks for degradation relative to in-sample — mirroring ``run_oos_stage`` for
-    single-asset models.
+    single-asset models. When ``guard`` (an ``OOSGuard``) is supplied, records a run
+    against (``model.family``, ``model.name``, ``basket``) and stamps the resulting
+    count on ``detail["oos_run_count"]`` — see ``pipeline/oos_guard.py``.
     """
     from meridian.data.splits import SplitSpec
     from meridian.pipeline.oos import compare_oos_to_is
@@ -165,12 +173,22 @@ def run_universe_oos_stage(
         else GraduationCriteria(min_periods=0)
     )
     passed = passes_metric_bar(oos_card, oos_criteria) and not comparison["degraded"]
+    detail = {
+        "n_oos": int(len(oos_res.returns)), **comparison, "n_symbols": len(oos),
+        "fill_realism": oos_res.meta.get("fill_realism", "close_approx"),
+    }
+    if guard is not None:
+        run_rec = guard.record_run(
+            model.family or "unknown", model.name or "unknown",
+            basket or "_".join(sorted(prices_by_symbol)),
+        )
+        detail["oos_run_count"] = run_rec.run_count
     return StageResult(
         stage="oos",
         model=model.name,
         scorecard=oos_card,
         passed=passed,
-        detail={"n_oos": int(len(oos_res.returns)), **comparison, "n_symbols": len(oos)},
+        detail=detail,
     )
 
 
@@ -196,19 +214,32 @@ def run_universe_pipeline(
     oos_spec=None,
     as_of: str | None = None,
     stop_on_fail: bool = True,
+    oos_guard=None,
+    track_oos_runs: bool = True,
+    basket: str | None = None,
+    allow_criteria_override: bool = False,
+    override_reason: str | None = None,
 ) -> dict[str, StageResult]:
     """Walk a cross-sectional model through all three pipeline stages.
 
     Mirrors ``run_pipeline`` for single-asset models. Slices the universe dict by
     date for the OOS stage, so a single ``prices_by_symbol`` covering the full
     history is all that is needed. ``bars_by_symbol`` (optional OHLC per symbol)
-    enables next-open fills — see ``CrossSectionalModel.backtest``. Returns
+    enables next-open fills — see ``CrossSectionalModel.backtest``. OOS run-counting is
+    on by default, same as ``run_pipeline`` — see that docstring; ``basket`` names the
+    counter key and defaults to the sorted, joined symbol list. Returns
     ``{stage: StageResult}``.
     """
     if criteria is None:
         criteria = (
             criteria_for_family(ledger.family) if ledger is not None else GraduationCriteria()
         )
+    if oos_guard is None and track_oos_runs:
+        from meridian.pipeline.oos_guard import OOSGuard
+
+        oos_guard = OOSGuard()
+    if basket is None:
+        basket = "_".join(sorted(prices_by_symbol))
     common = dict(
         cost_bps=cost_bps, bars_by_symbol=bars_by_symbol, regime_frame=regime_frame,
         periods_per_year=periods_per_year, criteria=criteria,
@@ -221,8 +252,10 @@ def run_universe_pipeline(
         extra: dict = {}
         if stage == "walk_forward" and wf_spec:
             extra = {"spec": wf_spec}
-        elif stage == "oos" and oos_spec:
-            extra = {"spec": oos_spec}
+        elif stage == "oos":
+            extra = {"guard": oos_guard, "basket": basket}
+            if oos_spec:
+                extra["spec"] = oos_spec
         res = UNIVERSE_STAGE_RUNNERS[stage](model, prices_by_symbol, **common, **extra)
         if ledger is not None:
             adv_criteria = (
@@ -230,7 +263,8 @@ def run_universe_pipeline(
                 if stage in ("walk_forward", "oos") else criteria
             )
             res.detail["ledger_action"] = advance(
-                ledger, res.scorecard, as_of=as_of, criteria=adv_criteria
+                ledger, res.scorecard, as_of=as_of, criteria=adv_criteria,
+                allow_criteria_override=allow_criteria_override, override_reason=override_reason,
             )
         results[stage] = res
         if stop_on_fail and not res.passed:

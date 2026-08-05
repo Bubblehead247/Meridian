@@ -148,10 +148,27 @@ def _symbol_list(args, *, default_to_symbol: bool) -> list[str]:
     ``--universe`` expands a named set (e.g. ``SP500``, ``QQQ``) via ``get_universe``.
     When nothing is given, single-asset commands fall back to ``--symbol`` (default SPY);
     cross-sectional commands return an empty list (a basket must be named explicitly).
+
+    Index universes (SP500/NASDAQ100/RUSSELL1000) are resolved from *today's*
+    constituent list — there is no historical membership data behind them — so using
+    one for a backtest/pipeline/gauntlet/sweep run is both survivorship-biased and
+    look-ahead-biased (a 2015 backtest gets 2026's index). This is blocked unless the
+    caller explicitly passes ``--accept-survivorship-bias``, matching the "flag loudly,
+    don't silently degrade" fix applied to fill timing.
     """
     if getattr(args, "universe", None):
-        from meridian.data.universe import get_universe
+        from meridian.data.universe import INDEX_UNIVERSES, get_universe
 
+        if (args.universe.strip().upper() in INDEX_UNIVERSES
+                and not getattr(args, "accept_survivorship_bias", False)):
+            raise ValueError(
+                f"--universe {args.universe!r} resolves to TODAY's index constituents, "
+                "not the historical membership at any backtest date — this is a "
+                "survivorship-bias AND look-ahead leak, not just a survivorship gap. "
+                "Pass --accept-survivorship-bias to proceed anyway, or use "
+                "data.source=survivorship (point-in-time, 2013-02 to 2018-02 only) "
+                "for a bias-controlled run."
+            )
         return list(get_universe(args.universe).symbols)
     if getattr(args, "symbols", None):
         return list(args.symbols)
@@ -194,7 +211,7 @@ def _run_single_asset(model, family, name, args, load_ohlcv, symbol) -> int:
     prices = frame["close"]
     ledger = StrategyLedger(name=name, family=family, stage="research")
     results = run_pipeline(
-        model, prices, ledger=ledger, bars=frame,
+        model, prices, ledger=ledger, bars=frame, symbol=symbol,
         cost_bps=args.cost_bps, stop_on_fail=not args.all_stages,
     )
     print(f"{args.model} on {symbol}  ({len(prices)} bars)")
@@ -203,6 +220,10 @@ def _run_single_asset(model, family, name, args, load_ohlcv, symbol) -> int:
         sharpe_s = f"{sharpe:6.2f}" if isinstance(sharpe, float) and sharpe == sharpe else "   n/a"
         print(f"  {stage:12s} passed={str(res.passed):5s} sharpe={sharpe_s}"
               f"  -> {res.detail.get('ledger_action')}")
+        run_count = res.detail.get("oos_run_count")
+        if run_count and run_count > 1:
+            print(f"  WARNING: this is OOS evaluation #{run_count} against this holdout "
+                  f"for {family}/{name} on {symbol} — a prior pass may not be a first look")
     print(f"  final graduation stage: {ledger.stage}")
     rec = record_from_pipeline(family, name, symbol, results, ledger)
     if rec is not None:
@@ -216,13 +237,16 @@ def _run_cross_sectional(model, args, load_ohlcv, symbols) -> int:
     from meridian.portfolio import StrategyLedger
 
     family, name = model.family, model.name
-    universe = {s: load_ohlcv(s, args.start)["close"] for s in symbols}
+    frames = {s: load_ohlcv(s, args.start) for s in symbols}
+    universe = {s: f["close"] for s, f in frames.items()}
+    bars_by_symbol = {s: f for s, f in frames.items() if "open" in f.columns}
     ledger = StrategyLedger(name=name, family=family, stage="research")
+    symbol_str = "_".join(symbols)
     results = run_cross_sectional_pipeline(
         model, universe, ledger=ledger, cost_bps=args.cost_bps,
-        stop_on_fail=not args.all_stages,
+        bars_by_symbol=bars_by_symbol or None, stop_on_fail=not args.all_stages,
+        basket=symbol_str,
     )
-    symbol_str = "_".join(symbols)
     n_bars = len(next(iter(universe.values())))
     print(
         f"{family}/{name} on {symbol_str}  "
@@ -237,6 +261,12 @@ def _run_cross_sectional(model, args, load_ohlcv, symbols) -> int:
         print(f"  {stage:12s} passed={str(res.passed):5s} sharpe={sharpe_s}"
               f"  n_trades={n_trades}  turnover={turn_s}"
               f"  -> {res.detail.get('ledger_action')}")
+        if res.detail.get("fill_realism") == "close_approx":
+            print("  WARNING: fills used same-bar close (no open data) — Sharpe is inflated")
+        run_count = res.detail.get("oos_run_count")
+        if run_count and run_count > 1:
+            print(f"  WARNING: this is OOS evaluation #{run_count} against this holdout "
+                  f"for {family}/{name} on {symbol_str} — a prior pass may not be a first look")
     print(f"  final graduation stage: {ledger.stage}")
     rec = record_from_pipeline(family, name, symbol_str, results, ledger)
     if rec is not None:
@@ -295,9 +325,11 @@ def _cmd_gauntlet(args) -> int:
 
     symbols = _symbol_list(args, default_to_symbol=True)
     if len(symbols) > 1:
-        universe = {s: load_ohlcv(s, args.start)["close"] for s in symbols}
+        frames = {s: load_ohlcv(s, args.start) for s in symbols}
+        universe = {s: f["close"] for s, f in frames.items()}
+        bars_by_symbol = {s: f for s, f in frames.items() if "open" in f.columns}
         print(f"Gauntlet — cross-sectional models on {len(universe)} names")
-        df = gauntlet_universe(universe, cost_bps=args.cost_bps)
+        df = gauntlet_universe(universe, cost_bps=args.cost_bps, bars_by_symbol=bars_by_symbol or None)
     else:
         frame = load_ohlcv(symbols[0], args.start)
         print(f"Gauntlet — single-asset models on {symbols[0]} ({len(frame)} bars)")
@@ -637,6 +669,10 @@ def build_parser() -> argparse.ArgumentParser:
     pp.add_argument("--symbols", nargs="*", help="Several symbols (a basket / multiple runs)")
     pp.add_argument("--universe", default=None,
                     help="Named universe (e.g. SP500, NASDAQ100, QQQ) instead of listing symbols")
+    pp.add_argument("--accept-survivorship-bias", action="store_true",
+                    dest="accept_survivorship_bias",
+                    help="Required to use an index universe (SP500/NASDAQ100/RUSSELL1000): "
+                         "it reflects today's constituents, not the historical membership")
     pp.add_argument("--start", default=None, help="Start date (YYYY-MM-DD)")
     pp.add_argument("--cost-bps", type=float, default=1.0, dest="cost_bps")
     pp.add_argument("--all-stages", action="store_true",
@@ -650,6 +686,10 @@ def build_parser() -> argparse.ArgumentParser:
     fp.add_argument("--symbols", nargs="*", help="Run the fund on each of several symbols")
     fp.add_argument("--universe", default=None,
                     help="Run the fund on each symbol of a named universe (e.g. QQQ, SP500)")
+    fp.add_argument("--accept-survivorship-bias", action="store_true",
+                    dest="accept_survivorship_bias",
+                    help="Required to use an index universe (SP500/NASDAQ100/RUSSELL1000): "
+                         "it reflects today's constituents, not the historical membership")
     fp.add_argument("--equity", type=float, default=100_000.0, help="Total account equity")
     fp.add_argument("--start", default=None, help="Start date (YYYY-MM-DD)")
     fp.add_argument("--cost-bps", type=float, default=1.0, dest="cost_bps")
@@ -660,6 +700,10 @@ def build_parser() -> argparse.ArgumentParser:
     gp.add_argument("--symbol", default="SPY", help="Single symbol (single-asset gauntlet)")
     gp.add_argument("--symbols", nargs="*", help="A basket (cross-sectional gauntlet)")
     gp.add_argument("--universe", default=None, help="Named universe (e.g. SP500)")
+    gp.add_argument("--accept-survivorship-bias", action="store_true",
+                    dest="accept_survivorship_bias",
+                    help="Required to use an index universe (SP500/NASDAQ100/RUSSELL1000): "
+                         "it reflects today's constituents, not the historical membership")
     gp.add_argument("--start", default=None, help="Start date (YYYY-MM-DD)")
     gp.add_argument("--cost-bps", type=float, default=1.0, dest="cost_bps")
     gp.set_defaults(func=_cmd_gauntlet)
@@ -671,6 +715,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--symbol", default="SPY", help="Symbol to tune on")
     sp.add_argument("--symbols", nargs="*", help="(first is used for the single-asset sweep)")
     sp.add_argument("--universe", default=None, help="(first member is used)")
+    sp.add_argument("--accept-survivorship-bias", action="store_true",
+                    dest="accept_survivorship_bias",
+                    help="Required to use an index universe (SP500/NASDAQ100/RUSSELL1000): "
+                         "it reflects today's constituents, not the historical membership")
     sp.add_argument("--start", default=None, help="Start date (YYYY-MM-DD)")
     sp.add_argument("--cost-bps", type=float, default=1.0, dest="cost_bps")
     sp.add_argument("--confirm", action="store_true",

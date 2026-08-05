@@ -139,10 +139,14 @@ def run_validation_report(
     cfg: dict, prices: pd.Series, bars: pd.DataFrame | None = None
 ) -> tuple[pd.DataFrame, str]:
     """Run validation and write a markdown report; return (table, report_path)."""
+    from meridian.experiments.run_log import cumulative_trial_count
+
     table = run_validation(cfg, prices, bars)
     data = cfg.get("data", {})
+    symbols = data.get("symbols") or [data.get("symbol", "?")]
+    estimators = resolve_estimators(cfg)
     meta = {
-        "symbols": (data.get("symbols") or [data.get("symbol", "?")]),
+        "symbols": symbols,
         "start": data.get("start"),
         "end": data.get("end"),
         "deviation": cfg.get("deviation", "zscore"),
@@ -150,10 +154,11 @@ def run_validation_report(
         "cost_bps": cfg.get("cost_bps", 1.0),
         "wfo": build_wfo(cfg).mode,
         "correction": cfg.get("validation", {}).get("correction", "bh"),
+        "estimators": estimators,
+        "scope": sorted(symbols),
     }
-    md = build_validation_report(table, meta)
     out = cfg.get("report", {}).get("path", "reports/validation.md")
-    write_report(out, md)
+    log_path = Path(out).parent / "run_log.jsonl"
     sig = table[table["significant"]]["estimator"].tolist() if "significant" in table.columns else []
     append_run(new_run_record(
         config_path=cfg.get("_source_path", "?"),
@@ -162,7 +167,14 @@ def run_validation_report(
         meta=meta,
         report_path=out,
         summary={"n_tested": len(table), "n_significant": len(sig), "significant": sig},
-    ), path=Path(out).parent / "run_log.jsonl")
+    ), path=log_path)
+    # Read back the log *after* appending, so this run's own trials are included in
+    # the cumulative count the report discloses (P1-A) — this run's estimator list is
+    # not a fresh, unpenalized N=len(estimators) look at the data if the same symbols
+    # were already tested in a prior logged run.
+    meta["cumulative_trial_count"] = cumulative_trial_count(log_path, scope=meta["scope"])
+    md = build_validation_report(table, meta)
+    write_report(out, md)
     return table, out
 
 
@@ -295,8 +307,11 @@ def run_universe_validation_report(
     cfg: dict, prices_by_symbol: dict, bars_by_symbol: dict | None = None
 ) -> tuple[pd.DataFrame, str]:
     """Run universe validation and write a markdown report; return (table, path)."""
+    from meridian.experiments.run_log import cumulative_trial_count
+
     table = run_universe_validation(cfg, prices_by_symbol, bars_by_symbol)
     data = cfg.get("data", {})
+    estimators = resolve_estimators(cfg)
     meta = {
         "symbols": f"{len(prices_by_symbol)} names",
         "start": data.get("start"),
@@ -308,12 +323,17 @@ def run_universe_validation_report(
         "wfo": build_wfo(cfg).mode,
         "correction": cfg.get("validation", {}).get("correction", "bh"),
         "survivorship_biased": is_survivorship_biased(cfg),
+        "estimators": estimators,
+        "scope": sorted(prices_by_symbol),
     }
-    md = build_validation_report(
-        table, meta, title="Meridian — Universe-Wide Mean-Reversion Validation"
-    )
+    if data.get("source") == "survivorship":
+        from meridian.data.survivorship import coverage_warning
+
+        warning = coverage_warning(data.get("start"), data.get("end"))
+        if warning is not None:
+            meta["survivorship_coverage_warning"] = warning
     out = cfg.get("report", {}).get("path", "reports/universe_validation.md")
-    write_report(out, md)
+    log_path = Path(out).parent / "run_log.jsonl"
     sig = table[table["significant"]]["estimator"].tolist() if "significant" in table.columns else []
     append_run(new_run_record(
         config_path=cfg.get("_source_path", "?"),
@@ -322,7 +342,12 @@ def run_universe_validation_report(
         meta=meta,
         report_path=out,
         summary={"n_tested": len(table), "n_significant": len(sig), "significant": sig},
-    ), path=Path(out).parent / "run_log.jsonl")
+    ), path=log_path)
+    meta["cumulative_trial_count"] = cumulative_trial_count(log_path, scope=meta["scope"])
+    md = build_validation_report(
+        table, meta, title="Meridian — Universe-Wide Mean-Reversion Validation"
+    )
+    write_report(out, md)
     return table, out
 
 
