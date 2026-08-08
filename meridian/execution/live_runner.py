@@ -8,6 +8,16 @@ Typical daily use:
     from meridian.execution import AlpacaBroker
     broker = AlpacaBroker()          # reads ALPACA_API_KEY / ALPACA_SECRET_KEY
     decisions = run_paper_session(broker, account_equity=100_000)
+
+2026-08-07 — order netting: sleeve universes overlap (SECTORS ⊇ XLK, which
+trend_following also holds), so on several sessions between 2026-07-22 and
+2026-07-30 sector_rotation and trend_following each bought XLK the same day
+as two separate broker orders — two spreads paid for one net exposure
+change. ``run_paper_session`` now computes every family's approved order
+first and nets them per symbol before touching the broker (see the
+docstring on ``run_paper_session`` for the two-pass structure), so
+offsetting sleeve deltas settle against each other internally instead of
+crossing the spread twice.
 """
 
 from __future__ import annotations
@@ -55,6 +65,17 @@ _SECTOR_UNIVERSE = [
     "XLC", "XLY", "XLP", "XLE", "XLF",
     "XLV", "XLI", "XLB", "XLRE", "XLK", "XLU",
 ]
+
+
+@dataclass
+class _Leg:
+    """One family's approved-but-not-yet-sent order, pending symbol netting."""
+
+    family: str
+    model: str
+    symbol: str
+    delta: float
+    price: float
 
 
 @dataclass
@@ -141,6 +162,15 @@ def run_paper_session(
     per family, so no two strategies in a sleeve fight over the same symbol. If that
     file is missing/empty, nothing trades: a live bot never trades an uncurated book.
 
+    Two passes: pass 1 computes every family's signals, sizing, and gated order
+    (unchanged from the original per-family logic) but defers execution — the
+    approved leg is collected instead of sent. Pass 2 nets every symbol's legs
+    across families into a single broker order (or, if the net is below the
+    notional floor, settles the legs internally with no broker order at all)
+    before applying each leg's own delta to that family's position book. This
+    means two sleeves whose deltas fully or partially offset never each pay
+    their own spread for what is one net exposure change at the account level.
+
     Args:
         broker: A BaseBroker implementation (AlpacaBroker for real paper trading,
             SimulatedBroker for offline testing).
@@ -157,6 +187,11 @@ def run_paper_session(
     present = set(picks)
     today = date.today()
     decisions: list[StrategyDecision] = []
+
+    # Pass 1 output: per-family decision fields (minus `orders`, filled in by
+    # pass 2) plus the approved legs, grouped by symbol for netting.
+    pending: list[dict] = []
+    legs_by_symbol: dict[str, list[_Leg]] = {}
 
     for family in sorted(picks):
         model_name = picks[family]["model"]
@@ -222,11 +257,19 @@ def run_paper_session(
             if series is not None and len(series) >= 2 and float(series.iloc[-2]) != 0:
                 day_changes[sym] = float(series.iloc[-1] / series.iloc[-2] - 1.0)
 
-        # --- reconcile with this sleeve's own position book ---
+        # --- gate this family's per-symbol deltas against its own position
+        # book; approved legs are queued for pass 2, not sent yet ---
         # Deltas are taken against the per-sleeve virtual book, never the
         # account-level broker position: universes overlap (SECTORS contains
         # XLK), and a sleeve must not flatten another sleeve's holding.
-        fills: list[Fill] = []
+        decision = StrategyDecision(
+            family=family, model=model_name, symbol=symbol, as_of=today,
+            signals=sigs, target_shares=target_shares, orders=[],
+            weight=weight, day_changes=day_changes,
+        )
+        decisions.append(decision)
+        pending.append({"family": family, "model": model_name, "decision": decision})
+
         if not dry_run:
             for sym, target in target_shares.items():
                 if sym not in prices or prices[sym].empty:
@@ -252,34 +295,61 @@ def run_paper_session(
                               f"the {REBALANCE_BAND_PCT:.0%} rebalance band")
                         continue
                 if abs(delta) > 0.001:
-                    try:
-                        fill = broker.market_order(sym, delta)
-                    except Exception as exc:
-                        # One rejected order must not abort the session.
-                        print(f"  order failed: {family} {sym} {delta:+.4f} — {exc}")
-                        continue
-                    if fill is not None:
-                        fills.append(fill)
-                        adjust_position(family, sym, delta, path=positions_path)
-                        # Real broker orders carry an order_id: log actual
-                        # fills now, queue unfilled ones (e.g. placed after
-                        # the close) for the morning reconcile. Simulated
-                        # fills stay out of the permanent trade log.
-                        if fill.order_id:
-                            if fill.filled and fill.price > 0:
-                                record_fill(fill, family, model_name)
-                            else:
-                                add_pending_order(fill, family, model_name)
-                        if fill.qty > 0:
-                            notify_entry(fill, family, model_name, last_close=price)
-                        else:
-                            notify_exit(fill, family, model_name, last_close=price)
+                    legs_by_symbol.setdefault(sym, []).append(
+                        _Leg(family=family, model=model_name, symbol=sym,
+                             delta=delta, price=price)
+                    )
 
-        decisions.append(StrategyDecision(
-            family=family, model=model_name, symbol=symbol, as_of=today,
-            signals=sigs, target_shares=target_shares, orders=fills,
-            weight=weight, day_changes=day_changes,
-        ))
+    # --- pass 2: net every symbol's approved legs into one broker order ---
+    decision_by_family = {p["family"]: p["decision"] for p in pending}
+    for sym, legs in legs_by_symbol.items():
+        price = legs[-1].price
+        net_qty = round(sum(leg.delta for leg in legs), 6)
+
+        if abs(net_qty) * price < MIN_ORDER_NOTIONAL:
+            # Net exposure change isn't worth a broker order at all — legs
+            # offset each other (fully or partially) without ever crossing
+            # the spread. Settle each leg internally at the last-known price.
+            for leg in legs:
+                synthetic = Fill(symbol=sym, qty=leg.delta, price=price,
+                                  order_id="", filled=True)
+                adjust_position(leg.family, sym, leg.delta, path=positions_path)
+                decision_by_family[leg.family].orders.append(synthetic)
+                if synthetic.qty > 0:
+                    notify_entry(synthetic, leg.family, leg.model, last_close=price)
+                else:
+                    notify_exit(synthetic, leg.family, leg.model, last_close=price)
+            continue
+
+        try:
+            real_fill = broker.market_order(sym, net_qty)
+        except Exception as exc:
+            # One rejected net order must not abort the session, and must not
+            # apply any of the legs that fed into it.
+            print(f"  order failed: {sym} {net_qty:+.4f} (netted) — {exc}")
+            continue
+
+        if real_fill is None:
+            continue
+
+        for leg in legs:
+            fill = Fill(symbol=sym, qty=leg.delta, price=real_fill.price,
+                         order_id=real_fill.order_id, filled=real_fill.filled)
+            adjust_position(leg.family, sym, leg.delta, path=positions_path)
+            decision_by_family[leg.family].orders.append(fill)
+            # Real broker orders carry an order_id: log actual fills now,
+            # queue unfilled ones (e.g. placed after the close) for the
+            # morning reconcile. Simulated fills stay out of the permanent
+            # trade log.
+            if fill.order_id:
+                if fill.filled and fill.price > 0:
+                    record_fill(fill, leg.family, leg.model)
+                else:
+                    add_pending_order(fill, leg.family, leg.model)
+            if fill.qty > 0:
+                notify_entry(fill, leg.family, leg.model, last_close=price)
+            else:
+                notify_exit(fill, leg.family, leg.model, last_close=price)
 
     if not dry_run:
         # BaseBroker declares get_account_equity with a (None, None) default, so

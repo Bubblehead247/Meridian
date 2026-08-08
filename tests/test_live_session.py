@@ -8,6 +8,7 @@ strategy registry are stubbed so the test is fast and deterministic.
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from meridian.execution import live_runner
 from meridian.execution.broker import SimulatedBroker
@@ -263,3 +264,182 @@ def test_opening_a_position_ignores_the_band(monkeypatch, tmp_path):
     sent = _run_with_holding(monkeypatch, tmp_path, held=0.0, equity=100_000.0)
 
     assert [s for s, _ in sent] == ["XLK"]
+
+
+# --- order netting across families (same symbol) ----------------------------
+#
+# 2026-08-07: sector_rotation and trend_following each bought XLK the same
+# day as two separate broker orders on several sessions — two spreads paid
+# for one net account-level exposure change. These cover the fix: every
+# family's approved order is collected first, then netted per symbol before
+# a single broker.market_order call (or none, if the net washes out).
+
+
+def _model_for(models_by_family: dict[str, object]):
+    """create_model stub that dispatches on family, ignoring model name."""
+    def _create(family, model):
+        return models_by_family[family]
+    return _create
+
+
+def test_two_families_same_direction_send_one_summed_order(monkeypatch, tmp_path):
+    picks = {
+        "trend_following": {"model": "ma", "symbol": "XLK"},
+        "mean_reversion":  {"model": "z",  "symbol": "XLK"},
+    }
+    _patch_session(monkeypatch, picks)
+    monkeypatch.setattr(
+        live_runner, "create_model",
+        _model_for({"trend_following": _FakeModel(), "mean_reversion": _FakeModel()}),
+    )
+    broker = _BandBroker(cash=100_000.0, cost_bps=0.0)
+    positions_path = tmp_path / "positions.json"
+
+    decisions = live_runner.run_paper_session(
+        broker, account_equity=100_000.0, positions_path=positions_path)
+
+    # Both families open a 150-share position (100k * 15% / $100) — one
+    # broker call for the summed 300 shares, not two of 150 each.
+    assert broker.sent == [("XLK", 300.0)]
+
+    import json
+    book = json.loads(positions_path.read_text())
+    assert book["trend_following"]["XLK"] == 150.0
+    assert book["mean_reversion"]["XLK"] == 150.0
+
+
+def test_two_families_opposite_direction_full_offset_sends_no_order(monkeypatch, tmp_path):
+    import json
+    picks = {
+        "trend_following":       {"model": "ma", "symbol": "XLK"},
+        "pullback_continuation": {"model": "z",  "symbol": "XLK"},
+    }
+    _patch_session(monkeypatch, picks)
+    monkeypatch.setattr(
+        live_runner, "create_model",
+        _model_for({"trend_following": _FakeModel(), "pullback_continuation": _FakeModel()}),
+    )
+    positions_path = tmp_path / "positions.json"
+    # trend_following (15% sleeve) already holds 250; its target is 150 →
+    # delta -100. pullback_continuation (10% sleeve) holds nothing; its
+    # target is 100 → delta +100. Net = 0.
+    positions_path.write_text(json.dumps({"trend_following": {"XLK": 250.0}}))
+    broker = _BandBroker(cash=100_000.0, cost_bps=0.0)
+
+    decisions = live_runner.run_paper_session(
+        broker, account_equity=100_000.0, positions_path=positions_path)
+
+    assert broker.sent == []  # net exposure change is zero — no spread paid
+
+    # Each family's own book still moves by its own requested delta.
+    book = json.loads(positions_path.read_text())
+    assert book["trend_following"]["XLK"] == 150.0
+    assert book["pullback_continuation"]["XLK"] == 100.0
+
+    by_family = {d.family: d for d in decisions}
+    assert len(by_family["trend_following"].orders) == 1
+    assert by_family["trend_following"].orders[0].qty == -100.0
+    assert len(by_family["pullback_continuation"].orders) == 1
+    assert by_family["pullback_continuation"].orders[0].qty == 100.0
+
+
+def test_two_families_opposite_direction_partial_offset_sends_residual_order(monkeypatch, tmp_path):
+    import json
+    picks = {
+        "trend_following": {"model": "ma", "symbol": "XLK"},
+        "mean_reversion":  {"model": "z",  "symbol": "XLK"},
+    }
+    _patch_session(monkeypatch, picks)
+    monkeypatch.setattr(
+        live_runner, "create_model",
+        _model_for({"trend_following": _FakeModel(), "mean_reversion": _FakeModel()}),
+    )
+    positions_path = tmp_path / "positions.json"
+    # trend_following holds 200 against a 150 target → delta -50.
+    # mean_reversion holds nothing against a 150 target → delta +150. Net = +100.
+    positions_path.write_text(json.dumps({"trend_following": {"XLK": 200.0}}))
+    broker = _BandBroker(cash=100_000.0, cost_bps=0.0)
+
+    live_runner.run_paper_session(
+        broker, account_equity=100_000.0, positions_path=positions_path)
+
+    assert broker.sent == [("XLK", 100.0)]
+
+    book = json.loads(positions_path.read_text())
+    assert book["trend_following"]["XLK"] == 150.0
+    assert book["mean_reversion"]["XLK"] == 150.0
+
+
+def test_net_order_failure_applies_no_leg(monkeypatch, tmp_path):
+    import json
+    picks = {
+        "trend_following": {"model": "ma", "symbol": "XLK"},
+        "mean_reversion":  {"model": "z",  "symbol": "XLK"},
+    }
+    _patch_session(monkeypatch, picks)
+    monkeypatch.setattr(
+        live_runner, "create_model",
+        _model_for({"trend_following": _FakeModel(), "mean_reversion": _FakeModel()}),
+    )
+    positions_path = tmp_path / "positions.json"
+
+    class _ExplodingBroker(SimulatedBroker):
+        def market_order(self, symbol, qty):
+            raise RuntimeError("insufficient buying power")
+
+    broker = _ExplodingBroker(cash=100_000.0, cost_bps=0.0)
+
+    decisions = live_runner.run_paper_session(
+        broker, account_equity=100_000.0, positions_path=positions_path)
+
+    # Neither leg's position book updates — the batch failed as a unit.
+    book = json.loads(positions_path.read_text()) if positions_path.exists() else {}
+    assert sum(len(v) for v in book.values()) == 0
+
+    by_family = {d.family: d for d in decisions}
+    assert by_family["trend_following"].orders == []
+    assert by_family["mean_reversion"].orders == []
+
+
+def test_leg_clears_notional_alone_but_net_does_not_settles_internally(monkeypatch, tmp_path):
+    """Two legs, each individually above MIN_ORDER_NOTIONAL, net below it.
+
+    No broker order is sent; both legs still settle against their own
+    sleeve's position book at the last-known price.
+    """
+    import json
+    picks = {
+        "trend_following": {"model": "ma", "symbol": "XLK"},  # opens: sig=1
+        "volatility":      {"model": "v",  "symbol": "XLK"},  # closes: sig=0
+    }
+    _patch_session(monkeypatch, picks)
+    monkeypatch.setattr(
+        live_runner, "create_model",
+        _model_for({"trend_following": _FakeModel(), "volatility": _FlatModel()}),
+    )
+    positions_path = tmp_path / "positions.json"
+    # volatility already holds 0.012 sh; its target is 0 (flat signal) →
+    # delta -0.012, notional $1.20 — clears MIN_ORDER_NOTIONAL alone.
+    positions_path.write_text(json.dumps({"volatility": {"XLK": 0.012}}))
+    broker = _BandBroker(cash=100_000.0, cost_bps=0.0)
+
+    # trend_following: equity 10 * weight 0.15 / $100 price = 0.015 sh target,
+    # opening from 0 → delta +0.015, notional $1.50 — also clears alone.
+    # Net = 0.015 - 0.012 = 0.003 sh → $0.30, below the $1 floor.
+    decisions = live_runner.run_paper_session(
+        broker, account_equity=10.0, positions_path=positions_path)
+
+    assert broker.sent == []  # net didn't clear the floor — no broker order
+
+    book = json.loads(positions_path.read_text())
+    assert book["trend_following"]["XLK"] == pytest.approx(0.015)
+    # volatility's position nets to ~0 and is dropped from the book entirely
+    # (set_position prunes empty entries), same as any other full close.
+    assert book.get("volatility", {}).get("XLK", 0.0) == pytest.approx(0.0)
+
+    by_family = {d.family: d for d in decisions}
+    assert len(by_family["trend_following"].orders) == 1
+    assert by_family["trend_following"].orders[0].qty == pytest.approx(0.015)
+    assert by_family["trend_following"].orders[0].order_id == ""
+    assert len(by_family["volatility"].orders) == 1
+    assert by_family["volatility"].orders[0].qty == pytest.approx(-0.012)
