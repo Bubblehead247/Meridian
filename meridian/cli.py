@@ -368,7 +368,7 @@ def _cmd_review(args) -> int:
 
     from meridian.reporting.review_runner import build_paper_review, render_full_review
 
-    print("Building monthly review…")
+    print("Building monthly review...")
     review, inventory_md = build_paper_review(
         equity=args.equity,
         price_start=args.start or "2023-01-01",
@@ -390,12 +390,12 @@ def _cmd_review(args) -> int:
             f"breadth={review.regime[2]}"
         )
     print(f"Portfolio heat: {review.portfolio_heat:.2%}"
-          + (" ⚠ breached" if review.heat_breached else ""))
+          + (" !! breached" if review.heat_breached else ""))
     print()
     print(f"{'Sleeve':<25} {'Action':<10} {'Return':>8} {'vs SPY':>8} {'DD':>7} {'OK':>4}")
     print("-" * 68)
     for s in review.sleeves:
-        ok = "✓" if s.permitted else "✗"
+        ok = "Y" if s.permitted else "N"
         print(f"  {s.sleeve:<23} {s.action:<10} "
               f"{s.return_pct:>7.1%} {s.excess_vs_benchmark:>+8.1%} "
               f"{s.drawdown_cur:>6.1%} {ok:>4}")

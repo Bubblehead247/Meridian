@@ -18,6 +18,11 @@ _LOOKBACKS = [("10yr", 2520), ("5yr", 1260), ("3yr", 756), ("1yr", 252), ("6mo",
 _CHART_HEIGHT = 10
 _MINI_HEIGHT  = 6
 
+#: Box-drawing chars aren't in cp1252, so plain print() (no `rich`) crashes on the
+#: default Windows console codepage. rich's own Console handles encoding itself,
+#: so this translation is only needed on the non-rich fallback path.
+_ASCII_SAFE = str.maketrans({"┤": "|", "└": "+", "─": "-", "╲": "\\", "╱": "/", "│": "|"})
+
 
 def _weighted_returns(returns_by_sleeve: dict[str, tuple[pd.Series, float]]) -> pd.Series:
     combined = None
@@ -109,9 +114,9 @@ def _print_chart(
             line.append(row_str, style="bold cyan" if i < height - 1 else "dim")
             console.print(line, end="\n")
         else:
-            print(f"{label}┤{row_str}")
+            print(f"{label}|{row_str.translate(_ASCII_SAFE)}")
 
-    x_axis = " " * y_lbl_w + "└" + "─" * chart_w
+    x_axis = " " * y_lbl_w + "+" + "-" * chart_w
     print(x_axis)
 
     if hasattr(dates, "year"):

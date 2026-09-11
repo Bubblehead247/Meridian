@@ -136,7 +136,10 @@ def _today_signals(model, prices_by_symbol: dict[str, pd.Series]) -> dict[str, i
     """Return {symbol: signal} for the most recent bar."""
     cross = getattr(model, "cross_sectional", False)
     if cross:
-        sig_df = model.signals(prices_by_symbol)
+        # filtered_signals (not signals) strips the trend-filter symbol (e.g. SPY)
+        # from the tradeable universe first — otherwise it gets ranked and traded
+        # like any other name instead of only gating entries. See base.py.
+        sig_df = model.filtered_signals(prices_by_symbol)
         if sig_df.empty:
             return {}
         row = sig_df.iloc[-1]

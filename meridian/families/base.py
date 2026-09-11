@@ -214,6 +214,45 @@ class CrossSectionalModel:
             )
         return rank_signals(scores, quantile=self.quantile, long_only=self.long_only)
 
+    def tradeable_universe(
+        self, prices_by_symbol: dict[str, pd.Series]
+    ) -> dict[str, pd.Series]:
+        """``prices_by_symbol`` with the trend-filter symbol removed, if present.
+
+        The filter symbol (e.g. SPY) is a market-timing input, never a position —
+        every caller that sizes or trades a cross-sectional model's universe must
+        strip it the same way ``filtered_signals`` does, or it gets ranked and
+        traded like any other name.
+        """
+        if self.trend_filter and self.trend_filter_symbol in prices_by_symbol:
+            return {k: v for k, v in prices_by_symbol.items()
+                    if k != self.trend_filter_symbol}
+        return prices_by_symbol
+
+    def filtered_signals(self, prices_by_symbol: dict[str, pd.Series]) -> pd.DataFrame:
+        """Cross-sectional signals with the trend-filter symbol stripped from the
+        tradeable universe and applied only as a market-timing gate.
+
+        This is the one place trend-filter handling lives — ``backtest`` and the
+        live runner (``_today_signals``) both call this instead of ``signals``
+        directly, so the filter symbol can never leak into a real position.
+        """
+        tradeable = self.tradeable_universe(prices_by_symbol)
+        filter_prices = (
+            prices_by_symbol[self.trend_filter_symbol]
+            if tradeable is not prices_by_symbol else None
+        )
+
+        signals = self.signals(tradeable)
+
+        # Apply trend filter: zero all signals when filter symbol is below its MA
+        if filter_prices is not None:
+            fp = pd.Series(filter_prices).reindex(signals.index).ffill()
+            ma = fp.rolling(self.trend_filter_window).mean()
+            signals.loc[(fp < ma) | ma.isna()] = 0
+
+        return signals
+
     def backtest(
         self,
         prices_by_symbol: dict[str, pd.Series],
@@ -230,21 +269,8 @@ class CrossSectionalModel:
         """
         from meridian.portfolio import backtest_portfolio
 
-        # Separate filter symbol from the tradeable universe
-        tradeable = prices_by_symbol
-        filter_prices = None
-        if self.trend_filter and self.trend_filter_symbol in prices_by_symbol:
-            filter_prices = prices_by_symbol[self.trend_filter_symbol]
-            tradeable = {k: v for k, v in prices_by_symbol.items()
-                         if k != self.trend_filter_symbol}
-
-        signals = self.signals(tradeable)
-
-        # Apply trend filter: zero all signals when filter symbol is below its MA
-        if filter_prices is not None:
-            fp = pd.Series(filter_prices).reindex(signals.index).ffill()
-            ma = fp.rolling(self.trend_filter_window).mean()
-            signals.loc[(fp < ma) | ma.isna()] = 0
+        tradeable = self.tradeable_universe(prices_by_symbol)
+        signals = self.filtered_signals(prices_by_symbol)
 
         prices = pd.DataFrame(
             {s: pd.Series(p) for s, p in tradeable.items()}
