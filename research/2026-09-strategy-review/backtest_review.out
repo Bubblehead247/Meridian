@@ -1,0 +1,39 @@
+weights: {'breakouts': 0.075, 'long_term_etf': 0.25, 'mean_reversion': 0.15, 'momentum': 0.15, 'pullback_continuation': 0.1, 'sector_rotation': 0.1, 'trend_following': 0.075, 'volatility': 0.05} sum 0.95
+
+=== Per sleeve (1 bps/side) ===
+               sleeve        fills weight in_mkt in_mkt_live_window   last_bar 2011-2015 2016-2020 2021-2026/06 full to 2026/06 since start      start  maxDD B&H same instr.
+            breakouts signal close  0.075    37%                57% 2026-09-25    +19.2%     +5.6%       +25.1%          +16.6%      +16.6% 2011-01-01 -33.8%          +16.2%
+        long_term_etf signal close  0.250   100%               100% 2026-09-25     +6.9%    +17.2%       +20.6%          +15.0%      +15.0% 2011-01-01 -24.8%           +9.0%
+       mean_reversion signal close  0.150    13%                 0% 2026-09-25       NaN       NaN       +14.4%             NaN      +18.9% 2020-09-16 -28.5%           -0.3%
+             momentum signal close  0.150   100%               100% 2026-09-25    +25.7%    +33.0%       +23.9%          +27.4%      +27.4% 2011-01-01 -34.9%          +24.1%
+pullback_continuation signal close  0.100     3%                15% 2026-09-25       NaN       NaN        +9.2%             NaN       +9.2% 2021-01-04 -10.2%          +63.0%
+      sector_rotation signal close  0.100   100%               100% 2026-09-25     +8.9%    +11.1%       +11.6%          +10.5%      +10.5% 2011-01-01 -32.0%          +10.0%
+      trend_following signal close  0.075    84%               100% 2026-09-25     +5.5%    +17.6%       +19.0%          +14.0%      +14.0% 2011-01-01 -25.5%          +18.8%
+           volatility signal close  0.050    25%                 0% 2026-09-25    +23.8%     +6.5%       +21.6%          +16.8%      +16.8% 2011-10-04 -37.9%          +12.0%
+            breakouts    next open  0.075    37%                57% 2026-09-25    +17.7%     +5.1%       +27.3%          +16.7%      +16.7% 2011-01-01 -26.1%          +16.2%
+        long_term_etf    next open  0.250   100%               100% 2026-09-25     +4.3%    +18.2%       +21.1%          +14.5%      +14.5% 2011-01-01 -25.3%           +9.0%
+       mean_reversion    next open  0.150    13%                 0% 2026-09-25       NaN       NaN       +13.4%             NaN      +16.9% 2020-09-16 -27.1%           -0.3%
+             momentum    next open  0.150   100%               100% 2026-09-25    +25.4%    +31.7%       +24.5%          +27.1%      +27.1% 2011-01-01 -33.5%          +24.1%
+pullback_continuation    next open  0.100     3%                15% 2026-09-25       NaN       NaN        +8.5%             NaN       +8.5% 2021-01-04  -9.9%          +63.0%
+      sector_rotation    next open  0.100   100%               100% 2026-09-25     +8.3%    +12.4%       +10.3%          +10.3%      +10.3% 2011-01-01 -30.0%          +10.0%
+      trend_following    next open  0.075    84%               100% 2026-09-25     +5.1%    +18.6%       +20.3%          +14.6%      +14.6% 2011-01-01 -25.5%          +18.8%
+           volatility    next open  0.050    25%                 0% 2026-09-25    +37.1%     -2.3%       +28.3%          +19.2%      +19.2% 2011-10-04 -47.3%          +12.0%
+
+=== Fund vs benchmarks (CAGR; maxDD over 2011-2026/06) ===
+                                      portfolio 2011-2015 2016-2020 2021-2026/06 full to 2026/06  maxDD
+                                            SPY    +10.2%    +12.9%       +13.0%          +12.0% -34.1%
+                                            QQQ    +15.5%    +22.9%       +16.0%          +18.0% -35.6%
+                                  60/40 SPY/IEF     +7.5%     +9.3%        +6.2%           +7.6% -21.9%
+                same-weights B&H (95% invested)    +10.6%    +12.8%       +21.1%          +14.9% -27.0%
+ Meridian live picks, 1 bps, signal-close fills     +9.7%    +13.8%       +18.7%          +14.1% -16.0%
+    Meridian live picks, 1 bps, next-open fills     +9.3%    +13.3%       +19.2%          +14.0% -16.7%
+Meridian live picks, 10 bps, signal-close fills     +8.5%    +12.6%       +17.3%          +12.9% -16.2%
+   Meridian live picks, 10 bps, next-open fills     +8.1%    +12.1%       +17.8%          +12.7% -17.0%
+Meridian live picks, 25 bps, signal-close fills     +6.5%    +10.6%       +15.1%          +10.8% -16.6%
+   Meridian live picks, 25 bps, next-open fills     +6.1%    +10.1%       +15.5%          +10.7% -17.4%
+
+=== Live window 2026-06-29 .. last bar (backtest, 1 bps next-open) ===
+  backtest fund return: +0.27%  (last bar 2026-09-25)
+  SPY                +5.81%
+  QQQ                +5.38%
+  same-weights B&H   +9.73%
