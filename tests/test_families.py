@@ -80,10 +80,36 @@ def test_model_backtest_matches_run_backtest_pipeline():
     """A model reuses the shared pipeline, so it must equal run_backtest of the same config."""
     prices = _reverting()
     m = create_model("mean_reversion", "zscore_reversion")
-    mine = m.backtest(prices, cost_bps=1.0)
+    mine = m.backtest(prices, cost_bps=1.0, allow_shorts=True)
     ref = run_backtest(prices, "sma", "zscore", window=20, cost_bps=1.0)
     pd.testing.assert_series_equal(mine.returns, ref.returns)
     assert mine.meta["family"] == "mean_reversion" and mine.meta["model"] == "zscore_reversion"
+
+
+def test_model_backtest_holds_short_signals_flat_by_default():
+    """The fund trades long only; a backtest must not book shorts it can't take."""
+    prices = _reverting()
+    m = create_model("mean_reversion", "zscore_reversion")
+    assert (m.signals(prices) < 0).any(), "fixture must produce short signals"
+    res = m.backtest(prices, cost_bps=1.0)
+    assert (res.positions >= 0).all()
+    both = m.backtest(prices, cost_bps=1.0, allow_shorts=True)
+    assert (both.positions < 0).any()
+
+
+def test_cross_sectional_backtest_gives_the_longs_the_whole_sleeve():
+    """Shorts are dropped before sizing, as live splits a sleeve over its longs."""
+    import numpy as np
+    idx = pd.bdate_range("2020-01-01", periods=300)
+    rng = np.random.default_rng(0)
+    universe = {f"S{i}": pd.Series(100 * np.exp(np.cumsum(rng.normal(0.0005 * i, 0.01, 300))),
+                                   index=idx) for i in range(6)}
+    m = create_model("momentum", "relative_strength")
+    assert (m.filtered_signals(universe) < 0).any().any(), "model must emit shorts"
+    res = m.backtest(universe, cost_bps=0.0)
+    w = res.weights.iloc[-50:]
+    assert (w >= 0).all().all()
+    assert w.sum(axis=1).round(9).eq(1.0).all()
 
 
 def test_instance_overrides_window():

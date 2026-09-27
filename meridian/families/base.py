@@ -46,13 +46,21 @@ class Model(ABC):
         cost_bps: float = 1.0,
         bars: pd.DataFrame | None = None,
         regime_frame: pd.DataFrame | None = None,
+        allow_shorts: bool = False,
     ) -> BacktestResult:
         """Backtest this model via the shared pipeline (reuses ``signals.backtest``).
 
         When ``regime_frame`` is supplied and the model has a declared ``family``,
         positions are gated to zero on bars the family's permission rule forbids.
+
+        Short signals are held flat unless ``allow_shorts``: the fund trades long
+        only (``live_runner``: shorts go flat), and booking shorts it can never
+        take is how rsi_exhaustion/SNOW was picked at +30.7%/yr when its
+        long-only return was +16.9% (research/2026-09-strategy-review).
         """
         positions = self.signals(prices, bars=bars)
+        if not allow_shorts:
+            positions = positions.clip(lower=0)
         if regime_frame is not None and self.family is not None:
             from meridian.families.permissions import gate_positions
             positions = gate_positions(positions, self.family, regime_frame)
@@ -259,6 +267,7 @@ class CrossSectionalModel:
         *,
         cost_bps: float = 1.0,
         bars_by_symbol: dict[str, pd.DataFrame] | None = None,
+        allow_shorts: bool = False,
     ):
         """Backtest the ranked portfolio via the shared cross-sectional engine.
 
@@ -266,11 +275,16 @@ class CrossSectionalModel:
         via ``backtest_portfolio``'s ``open_prices`` — see that function and
         ``Model.backtest``'s single-asset equivalent. Without it, fills fall
         back to the same close the signal was computed from.
+
+        Short signals are dropped before sizing unless ``allow_shorts``, so the
+        longs share the whole sleeve — as live sizes them (sleeve / n_long).
         """
         from meridian.portfolio import backtest_portfolio
 
         tradeable = self.tradeable_universe(prices_by_symbol)
         signals = self.filtered_signals(prices_by_symbol)
+        if not allow_shorts:
+            signals = signals.clip(lower=0)
 
         prices = pd.DataFrame(
             {s: pd.Series(p) for s, p in tradeable.items()}
