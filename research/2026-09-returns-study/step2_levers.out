@@ -1,0 +1,87 @@
+
+### 2011-2015
+| Portfolio | CAGR | Vol | Sharpe | Max DD |
+|---|---:|---:|---:|---:|
+| **Baseline (honest fund B)** | +5.5% | 7.3% | 0.77 | -8.5% |
+| L1 free sweeps | +5.5% | 7.3% | 0.77 | -8.5% |
+| L1 + L2a SPY | +9.5% | 11.6% | 0.84 | -11.9% |
+| L1 + L2b SPY 200-day trend | +7.8% | 10.8% | 0.75 | -12.7% |
+| L1 + L2c long_term_etf | +8.0% | 11.8% | 0.71 | -14.2% |
+| L1 + L2d honest momentum | +6.8% | 10.4% | 0.68 | -13.2% |
+| L1 + L2e 60/40 SPY/IEF | +8.6% | 9.5% | 0.91 | -10.2% |
+| L1 + vol target 10% | +6.1% | 9.9% | 0.65 | -11.2% |
+| L1 + L2b + vol target 10% | +6.0% | 10.6% | 0.60 | -11.9% |
+| L1 + vol target 12% | +6.7% | 10.7% | 0.66 | -12.6% |
+| L1 + L2b + vol target 12% | +6.9% | 12.6% | 0.60 | -14.2% |
+
+### 2016-2020
+| Portfolio | CAGR | Vol | Sharpe | Max DD |
+|---|---:|---:|---:|---:|
+| **Baseline (honest fund B)** | +8.0% | 8.2% | 0.97 | -15.0% |
+| L1 free sweeps | +8.1% | 8.2% | 0.99 | -15.0% |
+| L1 + L2a SPY | +12.8% | 13.4% | 0.97 | -24.3% |
+| L1 + L2b SPY 200-day trend | +11.2% | 11.8% | 0.96 | -20.3% |
+| L1 + L2c long_term_etf | +12.8% | 13.6% | 0.96 | -22.7% |
+| L1 + L2d honest momentum | +10.2% | 11.8% | 0.89 | -24.9% |
+| L1 + L2e 60/40 SPY/IEF | +11.4% | 11.0% | 1.04 | -20.0% |
+| L1 + vol target 10% | +8.0% | 9.4% | 0.86 | -15.4% |
+| L1 + L2b + vol target 10% | +10.0% | 10.9% | 0.93 | -15.3% |
+| L1 + vol target 12% | +8.2% | 10.3% | 0.82 | -17.3% |
+| L1 + L2b + vol target 12% | +11.0% | 12.4% | 0.90 | -18.1% |
+
+### 2021-2026/06
+| Portfolio | CAGR | Vol | Sharpe | Max DD |
+|---|---:|---:|---:|---:|
+| **Baseline (honest fund B)** | +10.3% | 8.4% | 1.21 | -7.6% |
+| L1 free sweeps | +10.6% | 8.4% | 1.24 | -7.6% |
+| L1 + L2a SPY | +14.3% | 12.8% | 1.11 | -13.8% |
+| L1 + L2b SPY 200-day trend | +13.0% | 11.8% | 1.10 | -12.9% |
+| L1 + L2c long_term_etf | +16.0% | 14.0% | 1.13 | -11.4% |
+| L1 + L2d honest momentum | +11.3% | 12.4% | 0.92 | -16.6% |
+| L1 + L2e 60/40 SPY/IEF | +12.2% | 11.0% | 1.10 | -11.9% |
+| L1 + vol target 10% | +10.3% | 10.1% | 1.02 | -9.4% |
+| L1 + L2b + vol target 10% | +10.1% | 10.4% | 0.98 | -12.3% |
+| L1 + vol target 12% | +11.4% | 11.5% | 1.00 | -10.7% |
+| L1 + L2b + vol target 12% | +11.4% | 12.3% | 0.94 | -14.4% |
+
+### 2011-2026/06
+| Portfolio | CAGR | Vol | Sharpe | Max DD |
+|---|---:|---:|---:|---:|
+| **Baseline (honest fund B)** | +8.0% | 8.0% | 1.00 | -15.0% |
+| L1 free sweeps | +8.1% | 8.0% | 1.01 | -15.0% |
+| L1 + L2a SPY | +12.3% | 12.6% | 0.98 | -24.3% |
+| L1 + L2b SPY 200-day trend | +10.7% | 11.5% | 0.95 | -20.3% |
+| L1 + L2c long_term_etf | +12.3% | 13.2% | 0.95 | -22.7% |
+| L1 + L2d honest momentum | +9.5% | 11.6% | 0.84 | -24.9% |
+| L1 + L2e 60/40 SPY/IEF | +10.8% | 10.5% | 1.02 | -20.0% |
+| L1 + vol target 10% | +8.2% | 9.8% | 0.85 | -15.4% |
+| L1 + L2b + vol target 10% | +8.7% | 10.6% | 0.84 | -15.3% |
+| L1 + vol target 12% | +8.8% | 10.9% | 0.83 | -17.3% |
+| L1 + L2b + vol target 12% | +9.8% | 12.4% | 0.81 | -18.1% |
+
+### Verdicts (pass rule in the docstring)
+| Lever | Verdict | Extra max DD 2011-26/06 |
+|---|---|---:|
+| L1 free sweeps | free | +0.0% |
+| L1 + L2a SPY | risk trade | -9.3% |
+| L1 + L2b SPY 200-day trend | risk trade | -5.3% |
+| L1 + L2c long_term_etf | risk trade | -7.7% |
+| L1 + L2d honest momentum | risk trade | -9.9% |
+| L1 + L2e 60/40 SPY/IEF | risk trade | -5.1% |
+| L1 + vol target 10% | fails | -0.4% |
+| L1 + L2b + vol target 10% | fails | -0.3% |
+| L1 + vol target 12% | risk trade | -2.3% |
+| L1 + L2b + vol target 12% | risk trade | -3.2% |
+
+### L4 per-sleeve value added (timing minus holding the same instruments)
+| Sleeve | 2011-15 | 2016-20 | 2021-26/06 |
+|---|---:|---:|---:|
+| long_term_etf | -3.2% | +0.7% | +12.8% |
+| sector_rotation | -2.1% | -1.6% | -2.0% |
+| momentum (honest ETFs) | -2.0% | -5.3% | -2.8% |
+| trend_following (SPY) | -5.1% | -4.3% | -3.6% |
+
+### L5 SVXY daily vol: 2012-2017 61%, 2018-04..2026 37%
+  vix_band sleeve 2018-04..2026/06: CAGR +10.4%, Sharpe 0.52, maxDD -37.7%
+  T-bills same window: CAGR +2.7%, Sharpe 22.07, maxDD -0.0%
+  SPY same window: CAGR +15.0%, Sharpe 0.82, maxDD -33.7%

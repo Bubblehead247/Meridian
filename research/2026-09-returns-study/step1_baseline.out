@@ -1,0 +1,61 @@
+weights: {'breakouts': 0.075, 'long_term_etf': 0.25, 'mean_reversion': 0.15, 'momentum': 0.15, 'pullback_continuation': 0.1, 'sector_rotation': 0.1, 'trend_following': 0.075, 'volatility': 0.05}
+
+### 2011-2015
+| Portfolio | CAGR | Vol | Sharpe | Max DD |
+|---|---:|---:|---:|---:|
+| A: live picks as run (hindsight) | +9.7% | 9.1% | 1.06 | -9.5% |
+| **B: honest baseline** | +5.5% | 7.3% | 0.77 | -8.5% |
+| SPY | +12.4% | 15.3% | 0.84 | -18.6% |
+| QQQ | +16.9% | 17.1% | 1.00 | -16.1% |
+| 60/40 SPY/IEF | +9.7% | 8.3% | 1.16 | -8.6% |
+
+### 2016-2020
+| Portfolio | CAGR | Vol | Sharpe | Max DD |
+|---|---:|---:|---:|---:|
+| A: live picks as run (hindsight) | +13.3% | 10.8% | 1.21 | -16.1% |
+| **B: honest baseline** | +8.0% | 8.2% | 0.97 | -15.0% |
+| SPY | +15.1% | 18.9% | 0.84 | -33.7% |
+| QQQ | +24.0% | 22.0% | 1.09 | -28.6% |
+| 60/40 SPY/IEF | +11.4% | 10.6% | 1.07 | -19.1% |
+
+### 2021-2026/06
+| Portfolio | CAGR | Vol | Sharpe | Max DD |
+|---|---:|---:|---:|---:|
+| A: live picks as run (hindsight) | +18.8% | 11.6% | 1.54 | -10.6% |
+| **B: honest baseline** | +10.3% | 8.4% | 1.21 | -7.6% |
+| SPY | +14.6% | 16.9% | 0.89 | -24.5% |
+| QQQ | +16.7% | 22.5% | 0.80 | -35.1% |
+| 60/40 SPY/IEF | +8.2% | 10.8% | 0.79 | -21.0% |
+
+### 2011-2026/06
+| Portfolio | CAGR | Vol | Sharpe | Max DD |
+|---|---:|---:|---:|---:|
+| A: live picks as run (hindsight) | +14.0% | 10.6% | 1.29 | -16.1% |
+| **B: honest baseline** | +8.0% | 8.0% | 1.00 | -15.0% |
+| SPY | +14.0% | 17.1% | 0.86 | -33.7% |
+| QQQ | +19.1% | 20.7% | 0.95 | -35.1% |
+| 60/40 SPY/IEF | +9.7% | 10.0% | 0.98 | -21.0% |
+
+### Per-sleeve, 2011-2026/06 (A = live pick, B = honest substitute)
+| Sleeve | Weight | A CAGR | A Sharpe | B CAGR | B Sharpe |
+|---|---:|---:|---:|---:|---:|
+| breakouts | 0.075 | +16.6% | 0.92 | +1.5% | 13.09 |
+| long_term_etf | 0.250 | +14.6% | 0.89 | +14.6% | 0.89 |
+| mean_reversion | 0.150 | +8.0% | 0.56 | +1.5% | 13.09 |
+| momentum | 0.150 | +25.1% | 1.11 | +5.8% | 0.50 |
+| pullback_continuation | 0.100 | +4.5% | 0.92 | +1.5% | 13.09 |
+| sector_rotation | 0.100 | +10.5% | 0.71 | +10.5% | 0.71 |
+| trend_following | 0.075 | +14.2% | 0.88 | +9.7% | 0.85 |
+| volatility | 0.050 | +14.2% | 0.61 | +14.2% | 0.61 |
+
+### Decomposition (daily OLS; alpha annualized)
+| Fund | Period | Alpha | t(alpha) | Beta SPY | Beta IEF | R² |
+|---|---|---:|---:|---:|---:|---:|
+| A live | 2011-2015 | +2.9% | +1.4 | 0.51 | 0.02 | 0.74 |
+| A live | 2016-2020 | +4.2% | +1.5 | 0.49 | 0.17 | 0.67 |
+| A live | 2021-2026/06 | +7.8% | +2.5 | 0.54 | -0.10 | 0.60 |
+| A live | 2011-2026/06 | +5.6% | +3.5 | 0.50 | -0.00 | 0.65 |
+| B honest | 2011-2015 | +0.1% | +0.0 | 0.39 | 0.09 | 0.62 |
+| B honest | 2016-2020 | +0.9% | +0.3 | 0.35 | 0.27 | 0.55 |
+| B honest | 2021-2026/06 | +2.7% | +1.0 | 0.34 | -0.03 | 0.47 |
+| B honest | 2011-2026/06 | +1.9% | +1.4 | 0.34 | 0.05 | 0.53 |
