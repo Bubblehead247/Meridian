@@ -177,12 +177,16 @@ reversion, ATR extension); every other active family follows the identical patte
 
 | Sleeve | Alloc | | Sleeve | Alloc |
 |---|---|---|---|---|
-| Long-term diversified ETF | 25% | | Sector rotation | 10% |
-| Momentum swing | 15% | | Cash reserve | 5% |
-| Trend-following breakout | 15% | | Experimental research | 5% |
-| Mean reversion | 15% | | Pullback continuation | 10% |
+| Long-term diversified ETF | 25% | | Pullback continuation | 10% |
+| Momentum swing | 15% | | Sector rotation | 10% |
+| Trend following | 7.5% | | Cash reserve | 5% |
+| Breakouts | 7.5% | | Experimental research | 5% |
+| Mean reversion | 15% | | | |
 
 Sums to 100%. Each sleeve → one `StrategyLedger` with `capital_alloc = pct × equity`.
+Trend following and breakouts used to share one combined 15% "trend-following
+breakout" sleeve with breakouts monitor-only (0% real capital); breakouts now
+gets its own real 7.5% allocation, split 50/50 out of that combined sleeve.
 
 ## 13. Sonnet task list
 

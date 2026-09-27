@@ -1,6 +1,6 @@
 """Reusable fund-lifecycle runner (shared by the CLI and the interactive menu).
 
-Runs the whole-fund lifecycle for one underlying: seed the 8 sleeves, drive a representative
+Runs the whole-fund lifecycle for one underlying: seed the 9 sleeves, drive a representative
 single-asset model per family through the pipeline (advancing each ledger's graduation
 stage), and produce the month-end review. This module owns the orchestration only — it does
 no network I/O (callers pass loaded prices) and no rendering (callers render/print the

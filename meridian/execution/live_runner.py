@@ -31,6 +31,7 @@ import pandas as pd
 from meridian.data import load_ohlcv
 from meridian.execution.broker import BaseBroker, Fill
 from meridian.execution.notify import notify_daily_status, notify_entry, notify_exit
+from meridian.execution import rebalance_schedule
 from meridian.execution.positions import POSITIONS_FILE, adjust_position, get_position
 from meridian.execution.reconcile import add_pending_order, record_fill
 from meridian.families import create_model
@@ -58,6 +59,10 @@ MIN_ORDER_NOTIONAL = 1.0
 #: This gates **adjustments only**. Opening a position and closing one are
 #: decisions, not drift, so they always go through however small they are —
 #: otherwise a signal to exit could be silently swallowed.
+#:
+#: Adjustments are additionally throttled to once a calendar month (see
+#: ``rebalance_schedule.py``) — this band is what still applies *within* that
+#: monthly check, so a monthly resize doesn't fire on pure noise either.
 REBALANCE_BAND_PCT = 0.05
 
 # The 11 SPDR sector ETFs — what "SECTORS" expands to at execution time
@@ -158,6 +163,7 @@ def run_paper_session(
     price_start: str = "2023-01-01",
     dry_run: bool = False,
     positions_path: Path = POSITIONS_FILE,
+    rebalance_schedule_path: Path | None = None,
 ) -> list[StrategyDecision]:
     """Run every curated live pick for today; return one StrategyDecision per family.
 
@@ -182,6 +188,12 @@ def run_paper_session(
             252 trading days before today to cover 12-month momentum lookbacks.
         dry_run: If True, compute signals and sizes but send no orders to the broker.
 
+    Entries and exits still happen the day a model's signal actually opens or
+    closes a position — only *resizing an already-open position* toward a
+    drifted target is throttled to once a calendar month (see
+    ``rebalance_schedule.py``); pass ``rebalance_schedule_path`` to isolate
+    that state in tests, same as ``positions_path``.
+
     Returns:
         One StrategyDecision per live pick. Check ``decision.skipped`` and
         ``decision.skip_reason`` for picks that could not be executed.
@@ -189,6 +201,12 @@ def run_paper_session(
     picks = load_live_picks()
     present = set(picks)
     today = date.today()
+    # Resolved here (not as a bound default) so a test's monkeypatch of
+    # rebalance_schedule.REBALANCE_SCHEDULE_FILE is actually honored when this
+    # is called without an explicit path — a bound default captures the value
+    # at import time, before any monkeypatch can apply.
+    if rebalance_schedule_path is None:
+        rebalance_schedule_path = rebalance_schedule.REBALANCE_SCHEDULE_FILE
     decisions: list[StrategyDecision] = []
 
     # Pass 1 output: per-family decision fields (minus `orders`, filled in by
@@ -290,9 +308,17 @@ def run_paper_session(
                 # into tomorrow and goes out once it is worth placing.
                 if abs(delta) * price < MIN_ORDER_NOTIONAL:
                     continue
-                # Rebalance band: only for a position being adjusted. Opening
-                # (current == 0) and closing (target == 0) always go through.
+                # Adjusting a position already held (not opening or closing
+                # one) is throttled to once a calendar month, then still
+                # subject to the noise band within that month.
                 if current != 0.0 and target != 0.0:
+                    if not rebalance_schedule.is_rebalance_due(
+                        family, sym, today, path=rebalance_schedule_path
+                    ):
+                        continue
+                    rebalance_schedule.record_rebalance(
+                        family, sym, today, path=rebalance_schedule_path
+                    )
                     if abs(delta) < REBALANCE_BAND_PCT * abs(target):
                         print(f"  hold: {family} {sym} {delta:+.4f} sh is inside "
                               f"the {REBALANCE_BAND_PCT:.0%} rebalance band")
@@ -389,7 +415,7 @@ def print_session_report(decisions: list[StrategyDecision]) -> None:
     print(f"{'='*60}")
     print(f"  Strategies:  {len(active)} active  |  {len(skipped)} skipped")
 
-    # Group active by sleeve (breakouts shares trend_following)
+    # Group active by sleeve (volatility shares experimental_research)
     by_family: dict[str, list[StrategyDecision]] = {}
     for d in active:
         sleeve = FAMILY_TO_SLEEVE.get(d.family, d.family)

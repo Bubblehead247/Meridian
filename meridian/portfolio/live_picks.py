@@ -34,8 +34,9 @@ def live_pick_weight(family: str, present_families: set[str]) -> float:
     family that is also live is monitor-only → 0.0 (the named family is the primary
     holder of that sleeve). Otherwise it gets its sleeve's full weight.
 
-    Examples (with all 8 picks present): trend_following → 0.15,
-    breakouts → 0.0 (monitor), volatility → 0.05, mean_reversion → 0.15.
+    Examples (with all 8 picks present): trend_following → 0.075,
+    breakouts → 0.075 (its own sleeve, no longer monitor-only), volatility → 0.05,
+    mean_reversion → 0.15.
     """
     target = FAMILY_TO_SLEEVE.get(family, family)
     if target != family and target in present_families:

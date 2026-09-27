@@ -237,9 +237,9 @@ def test_criteria_for_family_direct_key_match():
 
 
 def test_criteria_for_family_remapped_families_get_their_sleeve_criteria():
-    # breakouts funds off the trend_following sleeve, not its own "breakouts" name
+    # breakouts now has its own sleeve (no longer remapped to trend_following)
     breakouts = criteria_for_family("breakouts")
-    assert breakouts.allocation_weight == SLEEVE_ALLOCATIONS["trend_following"]
+    assert breakouts.allocation_weight == SLEEVE_ALLOCATIONS["breakouts"]
     # volatility funds off the experimental_research sleeve
     volatility = criteria_for_family("volatility")
     assert volatility.allocation_weight == SLEEVE_ALLOCATIONS["experimental_research"]

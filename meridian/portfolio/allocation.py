@@ -3,7 +3,7 @@
 This module owns target sleeve weights and ledger initialization at first run;
 it does NOT own risk limits or suspension logic (those stay in portfolio/risk_budget.py).
 
-The 8-sleeve allocation (PLAN.md §12) is the fixed starting split of account equity. At
+The 9-sleeve allocation (PLAN.md §12) is the fixed starting split of account equity. At
 first run it seeds one ``StrategyLedger`` per sleeve with ``capital_alloc = pct × equity``;
 on later runs seeding is idempotent (existing ledgers, with their accumulated state, are
 left untouched).
@@ -15,17 +15,20 @@ from meridian.portfolio.ledger import LedgerStore, StrategyLedger
 
 #: Maps a strategy family to the sleeve that funds it. Families not listed here
 #: map to themselves (family == sleeve). Use this when a family shares a sleeve
-#: with another (e.g. breakouts is part of the "trend-following breakout" 15% sleeve).
+#: with another.
 FAMILY_TO_SLEEVE: dict[str, str] = {
-    "breakouts":  "trend_following",
     "volatility": "experimental_research",
 }
 
 #: Fixed starting allocation by sleeve (sums to 1.0). Keys double as ledger/family names.
+#: trend_following and breakouts used to share one 15% "trend-following breakout"
+#: sleeve with breakouts monitor-only (0% capital) — breakouts now gets its own
+#: real allocation, carved 50/50 out of that combined sleeve.
 SLEEVE_ALLOCATIONS: dict[str, float] = {
     "long_term_etf": 0.25,
     "momentum": 0.15,
-    "trend_following": 0.15,
+    "trend_following": 0.075,
+    "breakouts": 0.075,
     "mean_reversion": 0.15,
     "pullback_continuation": 0.10,
     "sector_rotation": 0.10,

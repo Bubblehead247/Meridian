@@ -12,6 +12,7 @@ import pytest
 
 from meridian.execution import live_runner
 from meridian.execution.broker import SimulatedBroker
+from meridian.portfolio.allocation import SLEEVE_ALLOCATIONS
 from meridian.portfolio.live_picks import live_pick_weight
 
 # --- weighting rule -------------------------------------------------------
@@ -22,18 +23,29 @@ def test_live_pick_weight_primary_and_monitor():
         "pullback_continuation", "sector_rotation", "breakouts", "volatility",
     }
     # Primary holders get their sleeve's full weight.
-    assert live_pick_weight("trend_following", present) == 0.15
     assert live_pick_weight("mean_reversion", present) == 0.15
     assert live_pick_weight("long_term_etf", present) == 0.25
-    # breakouts routes to the trend_following sleeve, which is already live → monitor.
-    assert live_pick_weight("breakouts", present) == 0.0
+    # trend_following and breakouts each have their own sleeve now (split 50/50
+    # out of the old combined 15% "trend-following breakout" sleeve).
+    assert live_pick_weight("trend_following", present) == 0.075
+    assert live_pick_weight("breakouts", present) == 0.075
     # volatility routes to experimental_research (no competing family) → full 5%.
     assert live_pick_weight("volatility", present) == 0.05
 
 
-def test_live_pick_weight_breakouts_funded_when_trend_absent():
-    # With no trend_following pick present, breakouts becomes the sleeve's holder.
-    assert live_pick_weight("breakouts", {"breakouts"}) == 0.15
+def test_live_pick_weight_monitor_mechanism(monkeypatch):
+    """A family whose mapped sleeve is another *live* family's own name is monitor-only.
+
+    breakouts no longer exercises this (it has its own sleeve), but the
+    mechanism itself — for whenever two families are made to share a sleeve —
+    still needs coverage.
+    """
+    import meridian.portfolio.live_picks as live_picks
+
+    monkeypatch.setattr(live_picks, "FAMILY_TO_SLEEVE", {"shadow": "trend_following"})
+    assert live_pick_weight("shadow", {"shadow", "trend_following"}) == 0.0
+    # With no trend_following pick present, "shadow" becomes the sleeve's holder.
+    assert live_pick_weight("shadow", {"shadow"}) == SLEEVE_ALLOCATIONS["trend_following"]
 
 
 # --- session driven by live_picks -----------------------------------------
@@ -59,10 +71,10 @@ def _patch_session(monkeypatch, picks):
     monkeypatch.setattr(live_runner, "create_model", lambda family, model: _FakeModel())
 
 
-def test_run_paper_session_sizes_primary_and_flattens_monitor(monkeypatch, tmp_path):
+def test_run_paper_session_sizes_each_familys_own_sleeve(monkeypatch, tmp_path):
     picks = {
         "trend_following": {"model": "ma_trend_long_only", "symbol": "XLK"},
-        "breakouts":       {"model": "turtle_ma_exit",     "symbol": "TRGP"},  # monitor → 0%
+        "breakouts":       {"model": "turtle_ma_exit",     "symbol": "TRGP"},
         "mean_reversion":  {"model": "rsi_exhaustion",     "symbol": "SNOW"},
     }
     _patch_session(monkeypatch, picks)
@@ -76,12 +88,12 @@ def test_run_paper_session_sizes_primary_and_flattens_monitor(monkeypatch, tmp_p
     assert set(by_family) == set(picks)            # exactly one decision per pick
 
     # Primary holder sizes to full sleeve weight: 100k * 0.15 / 1 long / $100 = 150 sh.
-    assert by_family["trend_following"].target_shares["XLK"] == 150.0
     assert by_family["mean_reversion"].target_shares["SNOW"] == 150.0
 
-    # Monitor-only family holds nothing and sends no orders, despite a long signal.
-    assert by_family["breakouts"].target_shares["TRGP"] == 0.0
-    assert by_family["breakouts"].orders == []
+    # trend_following and breakouts now each hold their own real 7.5% sleeve:
+    # 100k * 0.075 / 1 long / $100 = 75 sh, not monitor-only.
+    assert by_family["trend_following"].target_shares["XLK"] == 75.0
+    assert by_family["breakouts"].target_shares["TRGP"] == 75.0
 
     # No symbol is traded by two families (stomping is structurally impossible).
     traded: dict[str, str] = {}
@@ -166,8 +178,8 @@ def test_order_updates_sleeve_position_book(monkeypatch, tmp_path):
         broker, account_equity=100_000.0, positions_path=positions_path)
 
     book = json.loads(positions_path.read_text())
-    # 100k * 15% sleeve / $100 = 150 shares recorded to trend_following's book.
-    assert book["trend_following"]["XLK"] == 150.0
+    # 100k * 7.5% sleeve / $100 = 75 shares recorded to trend_following's book.
+    assert book["trend_following"]["XLK"] == 75.0
 
 
 # --- order rejection is non-fatal -------------------------------------------
@@ -225,38 +237,41 @@ class _BandBroker(SimulatedBroker):
         return super().market_order(symbol, shares, **kwargs)
 
 
-def _run_with_holding(monkeypatch, tmp_path, held: float, equity: float):
+def _run_with_holding(monkeypatch, tmp_path, held: float, equity: float,
+                       positions=None, rebalance_schedule_path=None):
     """Run one session for a single family already holding `held` shares."""
     from meridian.execution.positions import adjust_position
 
     picks = {"trend_following": {"model": "ma_trend_long_only", "symbol": "XLK"}}
     _patch_session(monkeypatch, picks)
-    positions = tmp_path / "positions.json"
-    if held:
-        adjust_position("trend_following", "XLK", held, path=positions)
+    if positions is None:
+        positions = tmp_path / "positions.json"
+        if held:
+            adjust_position("trend_following", "XLK", held, path=positions)
 
     broker = _BandBroker(cash=equity, cost_bps=0.0)
     live_runner.run_paper_session(
-        broker, account_equity=equity, positions_path=positions)
+        broker, account_equity=equity, positions_path=positions,
+        rebalance_schedule_path=rebalance_schedule_path)
     return broker.sent
 
 
 def test_a_small_drift_inside_the_band_sends_no_order(monkeypatch, tmp_path):
     """XLK ratcheted 8.43 → 9.005 shares over six sessions of drift like this."""
-    # Sleeve target is 100_000 * 0.15 / $100 = 150 shares. Holding 148 leaves a
-    # 2-share delta = 1.3% of target, well inside the 5% band.
-    sent = _run_with_holding(monkeypatch, tmp_path, held=148.0, equity=100_000.0)
+    # Sleeve target is 100_000 * 0.075 / $100 = 75 shares. Holding 74 leaves a
+    # 1-share delta = 1.3% of target, well inside the 5% band.
+    sent = _run_with_holding(monkeypatch, tmp_path, held=74.0, equity=100_000.0)
 
     assert sent == []
 
 
 def test_a_drift_outside_the_band_still_trades(monkeypatch, tmp_path):
     """The band suppresses noise, not real divergence."""
-    # Holding 100 against a 150 target is a 50-share delta = 33% of target.
-    sent = _run_with_holding(monkeypatch, tmp_path, held=100.0, equity=100_000.0)
+    # Holding 50 against a 75 target is a 25-share delta = 33% of target.
+    sent = _run_with_holding(monkeypatch, tmp_path, held=50.0, equity=100_000.0)
 
     assert [s for s, _ in sent] == ["XLK"]
-    assert sent[0][1] == 50.0
+    assert sent[0][1] == 25.0
 
 
 def test_opening_a_position_ignores_the_band(monkeypatch, tmp_path):
@@ -264,6 +279,56 @@ def test_opening_a_position_ignores_the_band(monkeypatch, tmp_path):
     sent = _run_with_holding(monkeypatch, tmp_path, held=0.0, equity=100_000.0)
 
     assert [s for s, _ in sent] == ["XLK"]
+
+
+# --- monthly resize throttle -------------------------------------------------
+
+
+def test_second_resize_same_month_is_suppressed_even_outside_the_band(monkeypatch, tmp_path):
+    """Resizing an already-open position is throttled to once a calendar month.
+
+    Unlike the band (which only ever suppresses noise), this suppresses a
+    real divergence too if the position was already reconsidered this month —
+    that's the point of "monthly, not daily" resizing.
+    """
+    from meridian.execution.positions import adjust_position
+
+    positions = tmp_path / "positions.json"
+    schedule = tmp_path / "last_rebalance.json"
+    adjust_position("trend_following", "XLK", 50.0, path=positions)  # 33% short of 75
+
+    first = _run_with_holding(
+        monkeypatch, tmp_path, held=None, equity=100_000.0,
+        positions=positions, rebalance_schedule_path=schedule)
+    assert [s for s, _ in first] == ["XLK"], "first check this month: real divergence trades"
+
+    # Still 25 shares short of the 75 target (the first session's own order
+    # isn't reflected here since _BandBroker doesn't update `positions` on
+    # fill — mirrors the other band tests' pattern of one session per call).
+    second = _run_with_holding(
+        monkeypatch, tmp_path, held=None, equity=100_000.0,
+        positions=positions, rebalance_schedule_path=schedule)
+    assert second == [], "already reconsidered this month — waits for next month regardless of size"
+
+
+def test_resize_due_again_after_a_month_has_passed(monkeypatch, tmp_path):
+    from datetime import date, timedelta
+
+    from meridian.execution.positions import adjust_position
+    from meridian.execution.rebalance_schedule import record_rebalance
+
+    positions = tmp_path / "positions.json"
+    schedule = tmp_path / "last_rebalance.json"
+    adjust_position("trend_following", "XLK", 50.0, path=positions)
+
+    # Pretend this position was last resized over a month ago.
+    last_month = date.today() - timedelta(days=35)
+    record_rebalance("trend_following", "XLK", last_month, path=schedule)
+
+    sent = _run_with_holding(
+        monkeypatch, tmp_path, held=None, equity=100_000.0,
+        positions=positions, rebalance_schedule_path=schedule)
+    assert [s for s, _ in sent] == ["XLK"], "a month has passed — due for reconsideration again"
 
 
 # --- order netting across families (same symbol) ----------------------------
@@ -298,13 +363,13 @@ def test_two_families_same_direction_send_one_summed_order(monkeypatch, tmp_path
     decisions = live_runner.run_paper_session(
         broker, account_equity=100_000.0, positions_path=positions_path)
 
-    # Both families open a 150-share position (100k * 15% / $100) — one
-    # broker call for the summed 300 shares, not two of 150 each.
-    assert broker.sent == [("XLK", 300.0)]
+    # trend_following opens 75 (100k * 7.5% / $100), mean_reversion opens 150
+    # (100k * 15% / $100) — one broker call for the summed 225 shares, not two.
+    assert broker.sent == [("XLK", 225.0)]
 
     import json
     book = json.loads(positions_path.read_text())
-    assert book["trend_following"]["XLK"] == 150.0
+    assert book["trend_following"]["XLK"] == 75.0
     assert book["mean_reversion"]["XLK"] == 150.0
 
 
@@ -320,10 +385,10 @@ def test_two_families_opposite_direction_full_offset_sends_no_order(monkeypatch,
         _model_for({"trend_following": _FakeModel(), "pullback_continuation": _FakeModel()}),
     )
     positions_path = tmp_path / "positions.json"
-    # trend_following (15% sleeve) already holds 250; its target is 150 →
+    # trend_following (7.5% sleeve) already holds 175; its target is 75 →
     # delta -100. pullback_continuation (10% sleeve) holds nothing; its
     # target is 100 → delta +100. Net = 0.
-    positions_path.write_text(json.dumps({"trend_following": {"XLK": 250.0}}))
+    positions_path.write_text(json.dumps({"trend_following": {"XLK": 175.0}}))
     broker = _BandBroker(cash=100_000.0, cost_bps=0.0)
 
     decisions = live_runner.run_paper_session(
@@ -333,7 +398,7 @@ def test_two_families_opposite_direction_full_offset_sends_no_order(monkeypatch,
 
     # Each family's own book still moves by its own requested delta.
     book = json.loads(positions_path.read_text())
-    assert book["trend_following"]["XLK"] == 150.0
+    assert book["trend_following"]["XLK"] == 75.0
     assert book["pullback_continuation"]["XLK"] == 100.0
 
     by_family = {d.family: d for d in decisions}
@@ -355,9 +420,9 @@ def test_two_families_opposite_direction_partial_offset_sends_residual_order(mon
         _model_for({"trend_following": _FakeModel(), "mean_reversion": _FakeModel()}),
     )
     positions_path = tmp_path / "positions.json"
-    # trend_following holds 200 against a 150 target → delta -50.
+    # trend_following holds 125 against a 75 target → delta -50.
     # mean_reversion holds nothing against a 150 target → delta +150. Net = +100.
-    positions_path.write_text(json.dumps({"trend_following": {"XLK": 200.0}}))
+    positions_path.write_text(json.dumps({"trend_following": {"XLK": 125.0}}))
     broker = _BandBroker(cash=100_000.0, cost_bps=0.0)
 
     live_runner.run_paper_session(
@@ -366,7 +431,7 @@ def test_two_families_opposite_direction_partial_offset_sends_residual_order(mon
     assert broker.sent == [("XLK", 100.0)]
 
     book = json.loads(positions_path.read_text())
-    assert book["trend_following"]["XLK"] == 150.0
+    assert book["trend_following"]["XLK"] == 75.0
     assert book["mean_reversion"]["XLK"] == 150.0
 
 
@@ -423,11 +488,11 @@ def test_leg_clears_notional_alone_but_net_does_not_settles_internally(monkeypat
     positions_path.write_text(json.dumps({"volatility": {"XLK": 0.012}}))
     broker = _BandBroker(cash=100_000.0, cost_bps=0.0)
 
-    # trend_following: equity 10 * weight 0.15 / $100 price = 0.015 sh target,
+    # trend_following: equity 20 * weight 0.075 / $100 price = 0.015 sh target,
     # opening from 0 → delta +0.015, notional $1.50 — also clears alone.
     # Net = 0.015 - 0.012 = 0.003 sh → $0.30, below the $1 floor.
     decisions = live_runner.run_paper_session(
-        broker, account_equity=10.0, positions_path=positions_path)
+        broker, account_equity=20.0, positions_path=positions_path)
 
     assert broker.sent == []  # net didn't clear the floor — no broker order
 

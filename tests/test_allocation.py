@@ -1,4 +1,4 @@
-"""Tests for the 8-sleeve starting allocation + ledger seeding (PLAN.md §12)."""
+"""Tests for the 9-sleeve starting allocation + ledger seeding (PLAN.md §12)."""
 
 from __future__ import annotations
 
@@ -13,17 +13,19 @@ from meridian.portfolio import (
 )
 
 
-def test_allocation_table_has_eight_sleeves_summing_to_one():
-    assert len(SLEEVE_ALLOCATIONS) == 8
+def test_allocation_table_has_nine_sleeves_summing_to_one():
+    assert len(SLEEVE_ALLOCATIONS) == 9
     assert math.isclose(sum(SLEEVE_ALLOCATIONS.values()), 1.0)
 
 
 def test_seed_ledgers_splits_equity_by_table():
     leds = seed_ledgers(100_000.0)
-    assert len(leds) == 8
+    assert len(leds) == 9
     by_name = {x.name: x for x in leds}
     assert by_name["long_term_etf"].capital_alloc == 25_000.0
     assert by_name["cash_reserve"].capital_alloc == 5_000.0
+    assert by_name["trend_following"].capital_alloc == 7_500.0
+    assert by_name["breakouts"].capital_alloc == 7_500.0
     assert all(x.stage == "research" for x in leds)
     assert math.isclose(sum(x.capital_alloc for x in leds), 100_000.0)
 
@@ -38,7 +40,7 @@ def test_rebalance_targets_sum_to_equity():
 def test_initialize_ledgers_is_idempotent_and_preserves_state(tmp_path):
     store = LedgerStore(tmp_path)
     first = initialize_ledgers(100_000.0, store)
-    assert len(first) == 8 and len(store.list()) == 8
+    assert len(first) == 9 and len(store.list()) == 9
 
     # accrue state on one sleeve, persist it
     mr = first["mean_reversion"]
@@ -48,4 +50,4 @@ def test_initialize_ledgers_is_idempotent_and_preserves_state(tmp_path):
     # re-init must NOT clobber the accumulated ledger
     second = initialize_ledgers(100_000.0, store)
     assert second["mean_reversion"].realized_pnl == 500.0
-    assert len(store.list()) == 8       # no duplicates created
+    assert len(store.list()) == 9       # no duplicates created

@@ -218,14 +218,18 @@ Promotion requires days-in-stage threshold AND metrics within target band AND li
 |---|---|
 | Long-term diversified ETF | 25% |
 | Momentum swing | 15% |
-| Trend-following breakout | 15% |
 | Mean reversion | 15% |
+| Trend following | 7.5% |
+| Breakouts | 7.5% |
 | Pullback continuation | 10% |
 | Sector rotation | 10% |
 | Cash reserve | 5% |
 | Experimental research | 5% |
 
-Total: 100%.
+Total: 100%. Trend following and breakouts used to share one combined 15%
+"trend-following breakout" sleeve with breakouts monitor-only (0% real
+capital, per `live_pick_weight` in `portfolio/live_picks.py`); breakouts now
+has its own real 7.5% allocation, split 50/50 out of that combined sleeve.
 
 ---
 

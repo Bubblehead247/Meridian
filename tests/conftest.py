@@ -25,7 +25,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def _never_touch_the_real_ledger(monkeypatch, tmp_path):
     """Redirect every default ledger path to a temp directory."""
-    from meridian.execution import positions, reconcile
+    from meridian.execution import positions, reconcile, rebalance_schedule
     from meridian.experiments import run_log
     from meridian.pipeline import oos_guard
     from meridian.portfolio import sleeve_ledgers
@@ -34,6 +34,9 @@ def _never_touch_the_real_ledger(monkeypatch, tmp_path):
     ledger.mkdir(exist_ok=True)
 
     monkeypatch.setattr(positions, "POSITIONS_FILE", ledger / "positions.json")
+    monkeypatch.setattr(
+        rebalance_schedule, "REBALANCE_SCHEDULE_FILE", ledger / "last_rebalance.json"
+    )
     monkeypatch.setattr(reconcile, "PENDING_ORDERS_FILE", ledger / "pending_orders.json")
     monkeypatch.setattr(reconcile, "TRADE_LOG_FILE", ledger / "trade_log.jsonl")
     monkeypatch.setattr(sleeve_ledgers, "TRADE_LOG_FILE", ledger / "trade_log.jsonl")
