@@ -18,9 +18,11 @@ These are best-case numbers, not forecasts.
 | QQQ | +5.38% |
 | Same instruments, same weights, buy-and-hold | +9.73% |
 
-The backtest reproduces the account (+0.27% vs −0.03%) once it is made long-only like live —
-so the backtest below can be trusted to describe what the live rules do. Three months is far too
-short to judge anything by itself.
+The totals are close, but that is partly luck: live ran different weights until 9/11 (trend
+following 15%, breakouts monitor-only) and had stuck exits. The real evidence that the backtest
+describes the live rules is per sleeve: time in market 7/31–9/25 matches the live log (SNOW 0% in
+both once long-only, WFRD ~15% in both, TRGP close). Three months is far too short to judge
+anything by itself.
 
 ## 2. Why ~40% sits in cash — by design, not a bug
 
@@ -44,7 +46,7 @@ single-stock sleeves simply rarely signal.
 | Portfolio | CAGR | Max DD | Sharpe |
 |---|---:|---:|---:|
 | Meridian live picks (10 bps, next-open fills) | +12.7% | −17.0% | 1.15 |
-| Same instruments, same weights, buy-and-hold | +14.9% | −27.0% | — |
+| Same instruments, same weights, buy-and-hold | +14.9% | −27.0% | 0.98 |
 | SPY | +12.0% | −34.1% | 0.75 |
 | QQQ | +18.0% | −35.6% | 0.90 |
 | 60/40 SPY/IEF | +7.6% | −21.9% | 0.78 |
@@ -52,8 +54,14 @@ single-stock sleeves simply rarely signal.
 At 1 bps Meridian is +14.0%, at 25 bps +10.7%. Realized slippage on 204 live fills averages
 −3.9 bps (mostly overnight-gap noise), so 1–10 bps is the right range.
 
-By period (Meridian 10 bps next-open vs SPY): 2011–15 +8.1% vs +10.2%; 2016–20 +12.1% vs
-+12.9%; 2021–26/06 +17.8% vs +13.0%.
+| Period | Meridian (10 bps) | Same-instrument B&H | SPY |
+|---|---:|---:|---:|
+| 2011–2015 | +8.1% | +10.6% | +10.2% |
+| 2016–2020 | +12.1% | +12.8% | +12.9% |
+| 2021–2026/06 | +17.8% | +21.1% | +13.0% |
+
+The B&H lead in 2021–26 is inflated by WFRD's +63%/yr run (pure hindsight), but B&H also leads in
+2011–15 and 2016–20, before WFRD or SNOW existed.
 
 **Reading:** even with hindsight-chosen picks, the timing rules earn ~2%/yr *less* than simply
 holding the same instruments, in exchange for ~10 points less drawdown. The rules are a
@@ -61,14 +69,18 @@ drawdown tool, not a return source.
 
 ## 4. Findings in the code
 
-1. **Fixed (87e1a44): exits rejected over rounding.** Books keep 6 decimals, Alpaca 9. AVGO's
+1. **Fixed (87e1a44, tolerance 1e-6 in 5508885): exits rejected over rounding.** Changes live
+   order behavior from the Monday 9/28 session; checked read-only against the account (AVGO held
+   0.051938999 → the sell is trimmed to exactly that). Books keep 6 decimals, Alpaca 9. AVGO's
    exit failed 11 sessions running from 9/11 (AAPL, XLV for days in August); 45 failed orders
    in the log overall.
 2. **Not fixed: the research backtest books short signals that live never trades.**
    `Model.backtest` uses raw signals; live is long-only ("shorts … go flat").
    `rsi_exhaustion` on SNOW has 197 short days vs 182 long; its backtest drops from +30.7%/yr to
-   +16.9%/yr long-only. The gauntlet/pipeline that chose the picks uses `Model.backtest`, so any
-   model that emits shorts was selected on returns it can't earn.
+   +16.9%/yr long-only. The selection pipeline (`pipeline/backtest.py`, `oos.py`,
+   `walk_forward.py`, `universe.py`, `experiments/fund.py`) all call `model.backtest`, so any
+   model that emits shorts was selected on returns it can't earn. They also pass a `regime_frame`
+   that gates mean_reversion to neutral/bear trends — a gate live does not apply.
 3. Pullback (WFRD) holds 10% of capital and is invested 3% of the time (+8.5%/yr since 2021 vs
    +63%/yr for holding WFRD).
 
