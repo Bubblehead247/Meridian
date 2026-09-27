@@ -103,11 +103,20 @@ def test_the_skipped_delta_is_retried_once_it_is_worth_placing(monkeypatch, tmp_
     positions = tmp_path / "positions.json"
     target = round(10_000.0 * 0.10 / 46.02, 6)
 
+    # Each session gets its own rebalance-schedule file: this test is about the
+    # notional-floor/band mechanics in isolation, not the separate monthly
+    # resize throttle (covered in test_live_session.py), so each call here
+    # should independently reach its band decision rather than the second
+    # session's "considered this month" stamp silently gating the third.
+    def _rb_path(n: int) -> "Path":
+        return tmp_path / f"last_rebalance_{n}.json"
+
     # Session 1: shortfall worth $0.27 — skipped, and the book is unchanged.
     broker = _RecordingBroker(cash=10_000.0, cost_bps=0.0)
     positions.write_text(json.dumps({"sector_rotation": {"XLRE": target - 0.0059}}))
     live_runner.run_paper_session(
-        broker, account_equity=10_000.0, positions_path=positions)
+        broker, account_equity=10_000.0, positions_path=positions,
+        rebalance_schedule_path=_rb_path(1))
     assert broker.orders == []
     unchanged = json.loads(positions.read_text())["sector_rotation"]["XLRE"]
     assert unchanged == pytest.approx(target - 0.0059), (
@@ -117,14 +126,16 @@ def test_the_skipped_delta_is_retried_once_it_is_worth_placing(monkeypatch, tmp_
     broker = _RecordingBroker(cash=10_000.0, cost_bps=0.0)
     positions.write_text(json.dumps({"sector_rotation": {"XLRE": target - 0.5}}))
     live_runner.run_paper_session(
-        broker, account_equity=10_000.0, positions_path=positions)
+        broker, account_equity=10_000.0, positions_path=positions,
+        rebalance_schedule_path=_rb_path(2))
     assert broker.orders == [], "2.3% of the target is inside the rebalance band"
 
     # Session 3: 3 shares short — 13.8% of the target, outside the band.
     broker = _RecordingBroker(cash=10_000.0, cost_bps=0.0)
     positions.write_text(json.dumps({"sector_rotation": {"XLRE": target - 3.0}}))
     live_runner.run_paper_session(
-        broker, account_equity=10_000.0, positions_path=positions)
+        broker, account_equity=10_000.0, positions_path=positions,
+        rebalance_schedule_path=_rb_path(3))
     assert len(broker.orders) == 1, "a real divergence should have been placed"
     assert broker.orders[0][1] == pytest.approx(3.0, abs=1e-6)
 
@@ -229,7 +240,7 @@ def test_sleeve_ledgers_are_written_to_disk(tmp_path):
     assert saved, "no sleeve ledgers were produced"
     assert (tmp_path / "sleeves" / "trend_following.json").exists()
     trend = store.load("trend_following")
-    assert trend.capital_alloc == pytest.approx(1500.0)   # 15% of 10k
+    assert trend.capital_alloc == pytest.approx(750.0)    # 7.5% of 10k
     assert trend.unrealized_pnl == pytest.approx(10.0)    # 1 share, +$10
 
 
@@ -263,11 +274,12 @@ def test_a_sell_with_no_recorded_buy_is_not_booked_as_pure_profit(tmp_path):
     assert stats["realized"] == pytest.approx(0.0)
 
 
-def test_breakouts_profit_lands_in_the_trend_following_sleeve(tmp_path):
-    """breakouts is funded by the trend_following sleeve, not its own."""
+def test_breakouts_profit_lands_in_its_own_sleeve(tmp_path):
+    """breakouts now has its own sleeve, carved 50/50 out of the old combined
+    "trend-following breakout" 15% sleeve — no longer funded by trend_following."""
     from meridian.portfolio.sleeve_ledgers import pnl_by_sleeve, sleeve_for
 
-    assert sleeve_for("breakouts") == "trend_following"
+    assert sleeve_for("breakouts") == "breakouts"
     fills = [
         {"symbol": "TRGP", "qty": 1.0, "side": "buy", "price": 10.0,
          "family": "breakouts"},
@@ -275,8 +287,24 @@ def test_breakouts_profit_lands_in_the_trend_following_sleeve(tmp_path):
          "family": "breakouts"},
     ]
     stats = pnl_by_sleeve(fills, {})
-    assert stats["trend_following"]["realized"] == pytest.approx(2.0)
-    assert "breakouts" not in stats
+    assert stats["breakouts"]["realized"] == pytest.approx(2.0)
+    assert "trend_following" not in stats
+
+
+def test_volatility_profit_still_lands_in_experimental_research(tmp_path):
+    """volatility remains remapped to experimental_research (unlike breakouts now)."""
+    from meridian.portfolio.sleeve_ledgers import pnl_by_sleeve, sleeve_for
+
+    assert sleeve_for("volatility") == "experimental_research"
+    fills = [
+        {"symbol": "SVXY", "qty": 1.0, "side": "buy", "price": 50.0,
+         "family": "volatility"},
+        {"symbol": "SVXY", "qty": -1.0, "side": "sell", "price": 55.0,
+         "family": "volatility"},
+    ]
+    stats = pnl_by_sleeve(fills, {})
+    assert stats["experimental_research"]["realized"] == pytest.approx(5.0)
+    assert "volatility" not in stats
 
 
 def test_rerunning_does_not_double_count_profit(tmp_path):

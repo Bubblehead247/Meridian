@@ -153,6 +153,75 @@ def _render_sector_exposure(decisions: list) -> str:
     return "\n".join(lines)
 
 
+def _decision_price_lookup(records: list) -> callable:
+    """Build a (symbol, submitted_date) -> price function for slippage tracking.
+
+    Deliberately bypasses the on-disk cache (``use_cache=False``), same as
+    ``live_runner._fetch_prices`` — the cache is allowed to go stale for
+    reproducible research (see ``data/loader.py``), which would silently
+    corrupt a slippage measurement with months-old prices. One fresh fetch per
+    symbol is memoized for the life of this lookup so a report with many fills
+    on the same symbol doesn't refetch its whole history repeatedly.
+    """
+    cache: dict[str, object] = {}
+
+    def lookup(symbol: str, submitted: str):
+        if symbol not in cache:
+            try:
+                cache[symbol] = load_ohlcv(symbol, "2020-01-01", use_cache=False)["close"]
+            except Exception:
+                cache[symbol] = None
+        series = cache[symbol]
+        if series is None:
+            return None
+        prior = series[series.index.astype(str) <= submitted]
+        return float(prior.iloc[-1]) if not prior.empty else None
+
+    return lookup
+
+
+def _render_slippage_section() -> str:
+    """Markdown section: realized slippage on real fills vs. decision-time price."""
+    from meridian.analytics.slippage import slippage_by_fill, slippage_summary
+    from meridian.portfolio.sleeve_ledgers import read_fills
+
+    lines = ["## Slippage (real fills vs. decision-time price)", ""]
+    fills = read_fills()
+    if not fills:
+        lines.append("No fills recorded yet.")
+        return "\n".join(lines)
+
+    rows = slippage_by_fill(fills, _decision_price_lookup(fills))
+    summary = slippage_summary(rows)
+    if summary["n"] == 0:
+        lines.append("No fills could be matched to a decision price.")
+        return "\n".join(lines)
+
+    lines.append(
+        f"Notional-weighted average: **{summary['weighted_bps']:+.1f} bps** "
+        f"(**${summary['total_cost_dollars']:+,.2f}**) over {summary['n']} fills "
+        f"(of {len(fills)} total; the rest couldn't resolve a decision price)."
+    )
+    lines.append("")
+    lines.append("| Sleeve | Fills | Weighted avg | Cost |")
+    lines.append("|---|---:|---:|---:|")
+    for fam, stats in sorted(
+        summary["by_family"].items(), key=lambda kv: -kv[1]["total_cost_dollars"]
+    ):
+        lines.append(
+            f"| {fam} | {stats['n']} | {stats['weighted_bps']:+.1f} bps | "
+            f"${stats['total_cost_dollars']:+,.2f} |"
+        )
+    lines.append("")
+    lines.append(
+        "Positive = fills cost more than the decision-time price implied (a real "
+        "drag); negative = favorable. Compare against "
+        "`scoring/scorecard.py`'s `slippage_sensitivity`, which is the backtest-time "
+        "hypothetical for the same cost — this is what actually happened."
+    )
+    return "\n".join(lines)
+
+
 def _current_regime():
     """Fetch today's regime label, or None if unavailable or fully unknown.
 
@@ -216,7 +285,8 @@ def build_paper_review(
     """Build the monthly review for all paper-stage strategies.
 
     Returns (MonthlyReview, extra_markdown) where extra_markdown is the
-    strategy inventory section to append after the standard report.
+    sector exposure, slippage, and strategy inventory sections to append
+    after the standard report.
     """
     paper_records = [r for r in load_records() if r.stage_passed == "paper"]
 
@@ -244,8 +314,9 @@ def build_paper_review(
     )
 
     sector_md    = _render_sector_exposure(decisions)
+    slippage_md  = _render_slippage_section()
     inventory_md = _render_strategy_inventory(paper_records, signals)
-    return review, sector_md + "\n\n" + inventory_md
+    return review, sector_md + "\n\n" + slippage_md + "\n\n" + inventory_md
 
 
 def render_full_review(review: MonthlyReview, inventory_md: str) -> str:
