@@ -157,9 +157,9 @@ def _today_signals(model, prices_by_symbol: dict[str, pd.Series]) -> dict[str, i
 
 
 #: A sell this close to the broker's holding is the same shares, rounded
-#: differently. Well below the smallest real order (a $1 minimum is 1e-4 of
-#: even a $10,000 share) — genuine drift is left for the broker to reject.
-SELL_ROUNDING_TOL = 1e-5
+#: differently. Matches quantcore.reconcile's DEFAULT_QTY_TOL, so a trimmed sell
+#: never reads as qty drift there; genuine drift is left for the broker to reject.
+SELL_ROUNDING_TOL = 1e-6
 
 
 def _clamp_sell_to_held(broker: BaseBroker, symbol: str, net_qty: float) -> float:
