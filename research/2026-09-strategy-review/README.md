@@ -79,8 +79,9 @@ drawdown tool, not a return source.
    `rsi_exhaustion` on SNOW has 197 short days vs 182 long; its backtest drops from +30.7%/yr to
    +16.9%/yr long-only. The selection pipeline (`pipeline/backtest.py`, `oos.py`,
    `walk_forward.py`, `universe.py`, `experiments/fund.py`) all call `model.backtest`, so any
-   model that emits shorts was selected on returns it can't earn. They also pass a `regime_frame`
-   that gates mean_reversion to neutral/bear trends — a gate live does not apply.
+   model that emits shorts was selected on returns it can't earn. **Fixed in fe9fca1** (see §6).
+   Correction: only the `fund` command builds a `regime_frame`; the gauntlet and `pipeline`
+   commands pass none, so the regime gate was not part of pick selection.
 3. Pullback (WFRD) holds 10% of capital and is invested 3% of the time (+8.5%/yr since 2021 vs
    +63%/yr for holding WFRD).
 
@@ -94,3 +95,39 @@ drawdown tool, not a return source.
 - **D. Walk-forward pick selection** (choose on data to year X, test after X) for an honest
   out-of-sample estimate. The biggest study, and the only way to know whether the picks
   have any real edge.
+
+## 6. Option C done (2026-09-27): long-only engine, then re-selection
+
+**Engine (fe9fca1):** `Model.backtest` and `CrossSectionalModel.backtest` hold short signals
+flat unless `allow_shorts=True`; cross-sectional shorts are dropped before sizing so longs share
+the sleeve, as live does. 16 of 52 models emit shorts. Cross-checked: `build_fund_returns` now
+gives SNOW +18.9%/yr (same as this review's script) and the fund 14.2% (script 14.1%, cached
+vs uncached bars). The 358 records in `saved_strategies/` were scored before this change and
+are stale for any model that emits shorts.
+
+**Re-selection** (`reselect_picks.py`, output `reselect_picks.out`, all rows `reselect_all.csv`).
+Method fixed before looking: the 6/28 candidate symbols per family (crypto excluded; VRT, USO
+skipped for corrupt cache), every single-asset model of the family, long-only, 10 bps,
+next-open fills; select by 2011–2020 Sharpe (≥5 years, ≥10 entries); judge on 2021–2026/06.
+
+| Family | Current pick (chosen 2026 — not out-of-sample) | Honest pick (2011-20 Sharpe) | Its 2021–26/06 CAGR, Sharpe | IS→OOS rank corr. |
+|---|---|---|---:|---:|
+| breakouts | turtle_ma_exit / TRGP: +26.6%, 1.13 | turtle_ma_exit / SHOP | +10.5%, 0.49 | +0.02 |
+| mean_reversion | rsi_exhaustion / SNOW: +12.9%, 0.60 | rsi_reversion_ma_filter / ITB | +2.5%, 0.44 | +0.29 |
+| pullback | rsi_pullback / WFRD: +7.9%, 0.87 | rsi_pullback_50_200 / LITE | +0.4%, 0.11 | +0.17 |
+| trend_following | ma_trend_long_only / XLK: +20.0%, 1.07 | ma_trend_long_only / SHOP | +10.1%, 0.44 | +0.16 |
+| **Baseline: SPY** | | | +13.5%, 0.83 | |
+| QQQ | | | +16.2%, 0.78 | |
+
+How often timing beat simply holding the same symbol in 2021–26/06, across all eligible
+candidates: breakouts 36% (median +5.3% vs +13.5% holding), mean reversion 21% (+3.6% vs
++7.9%), pullback 16% (+0.8% vs +11.6%), trend following 10% (+3.8% vs +14.0%).
+
+**Reading:**
+- In-sample Sharpe barely predicts out-of-sample Sharpe (rank correlation +0.02 to +0.29).
+  The selection method has little skill; the current picks look good after 2021 only because
+  they were chosen knowing 2021–2026.
+- Honestly-selected picks all trail SPY after 2021. Swapping to them would be worse, not better.
+- **No change to `live_picks.json` recommended.** The finding is about the single-stock
+  sleeves as a whole (40% of capital, mostly idle): on this evidence they don't earn their
+  place over an index. That is a question for option B/D, not a pick swap.
