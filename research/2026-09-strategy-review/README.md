@@ -131,3 +131,27 @@ candidates: breakouts 36% (median +5.3% vs +13.5% holding), mean reversion 21% (
 - **No change to `live_picks.json` recommended.** The finding is about the single-stock
   sleeves as a whole (40% of capital, mostly idle): on this evidence they don't earn their
   place over an index. That is a question for option B/D, not a pick swap.
+
+## 7. Option B done (2026-09-27): idle single-stock sleeve cash -> SGOV
+
+`option_b_idle_sleeves.py` (output `.out`): total returns (adj_close — the loader's `close` is
+price-only, so every other backtest in this repo leaves dividends out), 10 bps, T-bills = ^IRX.
+The single-stock sleeves (32.5%) were invested 39% / 5% / 1% of days 2011–2026/06.
+
+| Variant, 2011–2026/06 | CAGR | Sharpe | Max DD |
+|---|---:|---:|---:|
+| **Current (baseline)** | +13.5% | 1.25 | −16.1% |
+| Idle cash → T-bills | +14.0% | 1.29 | −16.1% |
+| Idle cash → SPY | +17.6% | 1.16 | −26.6% |
+| Idle cash → long_term_etf | +17.6% | 1.17 | −23.3% |
+| Replace the sleeves with SPY | +15.3% | 1.05 | −26.6% |
+| Replace the sleeves with long_term_etf | +15.5% | 1.05 | −23.3% |
+
+2021–2026/06 (higher rates): T-bills +18.8% vs +17.7% baseline, same drawdown. Sweeping beats
+replacing because the sleeves' picks are hindsight-good; replacing is the honest-but-lower number.
+
+**User chose T-bills.** `live_runner.IDLE_SWEEP_FAMILIES` = breakouts, mean_reversion,
+pullback_continuation: a flat sleeve targets its whole sleeve in SGOV, and targets 0 SGOV the
+day it goes long. Orders net per symbol like everything else; resizing a held SGOV position
+follows the monthly throttle. Dry run 9/27: 32.28 SGOV (~$3,250) would be bought.
+**Alpaca paper pays no dividends, and SGOV's return is its dividend — on paper this shows ~0.**

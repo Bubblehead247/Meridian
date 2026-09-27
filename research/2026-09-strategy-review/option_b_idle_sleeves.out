@@ -1,0 +1,47 @@
+S sleeves ['breakouts', 'mean_reversion', 'pullback_continuation']: weight 0.325; average exposure 2011-26/06: breakouts 39%, mean_reversion 5%, pullback_continuation 1%
+fund weights sum 0.950 (rest is the 5% cash reserve, earning 0)
+
+### 2011-2015
+| Variant | CAGR | Sharpe | Max DD |
+|---|---:|---:|---:|
+| V0 current (baseline) | +9.6% | 1.06 | -9.5% |
+| V1 idle S cash -> T-bills | +9.7% | 1.06 | -9.5% |
+| V2 idle S cash -> SPY | +13.4% | 1.01 | -13.4% |
+| V3 idle S cash -> long_term_etf | +11.8% | 0.92 | -13.7% |
+| V4 S sleeves -> SPY | +12.2% | 0.93 | -13.4% |
+| V5 S sleeves -> long_term_etf | +10.7% | 0.84 | -14.8% |
+| SPY alone (reference) | +12.4% | 0.84 | -18.6% |
+
+### 2016-2020
+| Variant | CAGR | Sharpe | Max DD |
+|---|---:|---:|---:|
+| V0 current (baseline) | +13.0% | 1.18 | -16.1% |
+| V1 idle S cash -> T-bills | +13.3% | 1.21 | -16.1% |
+| V2 idle S cash -> SPY | +17.6% | 1.09 | -26.6% |
+| V3 idle S cash -> long_term_etf | +17.5% | 1.11 | -23.3% |
+| V4 S sleeves -> SPY | +16.5% | 1.04 | -26.6% |
+| V5 S sleeves -> long_term_etf | +16.6% | 1.06 | -23.3% |
+| SPY alone (reference) | +15.1% | 0.84 | -33.7% |
+
+### 2021-2026/06
+| Variant | CAGR | Sharpe | Max DD |
+|---|---:|---:|---:|
+| V0 current (baseline) | +17.7% | 1.46 | -10.7% |
+| V1 idle S cash -> T-bills | +18.8% | 1.54 | -10.6% |
+| V2 idle S cash -> SPY | +21.4% | 1.36 | -16.1% |
+| V3 idle S cash -> long_term_etf | +23.1% | 1.42 | -13.5% |
+| V4 S sleeves -> SPY | +17.2% | 1.17 | -16.3% |
+| V5 S sleeves -> long_term_etf | +19.0% | 1.20 | -14.9% |
+| SPY alone (reference) | +14.6% | 0.89 | -24.5% |
+
+### 2011-2026/06
+| Variant | CAGR | Sharpe | Max DD |
+|---|---:|---:|---:|
+| V0 current (baseline) | +13.5% | 1.25 | -16.1% |
+| V1 idle S cash -> T-bills | +14.0% | 1.29 | -16.1% |
+| V2 idle S cash -> SPY | +17.6% | 1.16 | -26.6% |
+| V3 idle S cash -> long_term_etf | +17.6% | 1.17 | -23.3% |
+| V4 S sleeves -> SPY | +15.3% | 1.05 | -26.6% |
+| V5 S sleeves -> long_term_etf | +15.5% | 1.05 | -23.3% |
+| SPY alone (reference) | +14.0% | 0.86 | -33.7% |
+

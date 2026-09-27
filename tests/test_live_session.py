@@ -553,3 +553,47 @@ def test_leg_clears_notional_alone_but_net_does_not_settles_internally(monkeypat
     assert by_family["trend_following"].orders[0].order_id == ""
     assert len(by_family["volatility"].orders) == 1
     assert by_family["volatility"].orders[0].qty == pytest.approx(-0.012)
+
+
+# --- idle-cash sweep (option B, 2026-09-27) ---------------------------------
+#
+# The single-stock sleeves sit flat most days; while flat their capital is
+# held in SGOV, and the SGOV is sold the day the sleeve's signal goes long.
+
+
+def _sweep_session(monkeypatch, tmp_path, family, model_cls, book=None):
+    import json
+    _patch_session(monkeypatch, {family: {"model": "m", "symbol": "SNOW"}})
+    monkeypatch.setattr(live_runner, "create_model", lambda f, m: model_cls())
+    positions_path = tmp_path / "positions.json"
+    positions_path.write_text(json.dumps(book or {}))
+    broker = SimulatedBroker(cash=100_000.0, cost_bps=0.0)
+    for sym, qty in (book or {}).get(family, {}).items():
+        broker.positions[sym] = qty
+    decisions = live_runner.run_paper_session(
+        broker, account_equity=100_000.0, positions_path=positions_path,
+        rebalance_schedule_path=tmp_path / "last_rebalance.json")
+    return decisions[0], json.loads(positions_path.read_text())
+
+
+def test_a_flat_single_stock_sleeve_parks_its_capital_in_sgov(monkeypatch, tmp_path):
+    decision, book = _sweep_session(monkeypatch, tmp_path, "mean_reversion", _FlatModel)
+    # 15% of $100k at the stubbed $100 price.
+    assert decision.target_shares["SGOV"] == pytest.approx(150.0)
+    assert book["mean_reversion"]["SGOV"] == pytest.approx(150.0)
+    assert book["mean_reversion"].get("SNOW", 0.0) == 0.0
+
+
+def test_the_sgov_is_sold_the_day_the_sleeve_goes_long(monkeypatch, tmp_path):
+    decision, book = _sweep_session(
+        monkeypatch, tmp_path, "mean_reversion", _FakeModel,
+        book={"mean_reversion": {"SGOV": 150.0}})
+    assert decision.target_shares["SGOV"] == 0.0
+    assert book["mean_reversion"].get("SGOV", 0.0) == 0.0
+    assert book["mean_reversion"]["SNOW"] == pytest.approx(150.0)
+
+
+def test_sleeves_outside_the_sweep_hold_no_sgov(monkeypatch, tmp_path):
+    decision, book = _sweep_session(monkeypatch, tmp_path, "trend_following", _FlatModel)
+    assert "SGOV" not in decision.target_shares
+    assert "SGOV" not in book.get("trend_following", {})

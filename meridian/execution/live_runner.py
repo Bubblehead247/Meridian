@@ -65,6 +65,14 @@ MIN_ORDER_NOTIONAL = 1.0
 #: monthly check, so a monthly resize doesn't fire on pure noise either.
 REBALANCE_BAND_PCT = 0.05
 
+#: Single-stock sleeves that sit flat most of the time (invested 1-39% of days,
+#: 2011-2026) park their capital in T-bills while flat. Backtest: 13.5% ->
+#: 14.0%/yr with drawdown unchanged; ~+1%/yr at a 4% T-bill rate
+#: (research/2026-09-strategy-review, option B). SGOV's return is its monthly
+#: dividend — Alpaca paper pays none, so on paper this shows roughly 0.
+IDLE_SWEEP_FAMILIES = frozenset({"breakouts", "mean_reversion", "pullback_continuation"})
+SWEEP_SYMBOL = "SGOV"
+
 # The 11 SPDR sector ETFs — what "SECTORS" expands to at execution time
 _SECTOR_UNIVERSE = [
     "XLC", "XLY", "XLP", "XLE", "XLF",
@@ -293,6 +301,17 @@ def run_paper_session(
                 target_shares[sym] = 0.0
             else:
                 target_shares[sym] = round(per_position_equity / price, 6)
+
+        # --- idle-cash sweep: a flat single-stock sleeve holds T-bills ---
+        if family in IDLE_SWEEP_FAMILIES:
+            sweep_px = _fetch_prices([SWEEP_SYMBOL], start=price_start).get(SWEEP_SYMBOL)
+            if sweep_px is not None and not sweep_px.empty and float(sweep_px.iloc[-1]) > 0:
+                prices[SWEEP_SYMBOL] = sweep_px
+                target_shares[SWEEP_SYMBOL] = (
+                    0.0 if n_long else
+                    round(per_strategy_equity / float(sweep_px.iloc[-1]), 6)
+                )
+            # No price: leave any SGOV held as it is rather than guess.
 
         # --- 1-day % change per symbol (for the daily status message) ---
         day_changes: dict[str, float] = {}
