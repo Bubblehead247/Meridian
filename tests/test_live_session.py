@@ -146,6 +146,51 @@ def test_sleeve_does_not_flatten_another_sleeves_holding(monkeypatch, tmp_path):
     assert broker.positions["XLK"] == 8.19    # holding untouched
 
 
+class _StrictBroker(SimulatedBroker):
+    """Rejects a sell larger than the holding, as Alpaca does."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.sent: list[tuple[str, float]] = []
+
+    def market_order(self, symbol, shares, **kwargs):
+        if shares < 0 and -shares > self.positions.get(symbol, 0.0):
+            raise RuntimeError("insufficient qty available for order")
+        self.sent.append((symbol, shares))
+        return super().market_order(symbol, shares, **kwargs)
+
+
+def _exit_against_broker_holding(monkeypatch, tmp_path, booked, held):
+    import json
+    _patch_session(monkeypatch, {"momentum": {"model": "m", "symbol": "AVGO"}})
+    monkeypatch.setattr(live_runner, "create_model", lambda f, m: _FlatModel())
+    positions_path = tmp_path / "positions.json"
+    positions_path.write_text(json.dumps({"momentum": {"AVGO": booked}}))
+    broker = _StrictBroker(cash=100_000.0, cost_bps=0.0)
+    broker.positions["AVGO"] = held
+    live_runner.run_paper_session(
+        broker, account_equity=100_000.0, positions_path=positions_path)
+    return broker, json.loads(positions_path.read_text())
+
+
+def test_an_exit_is_not_rejected_over_a_rounding_difference(monkeypatch, tmp_path):
+    """AVGO: booked 0.051939, Alpaca held 0.051938999 — the sell was rejected
+    for 11 straight sessions from 2026-09-11."""
+    broker, book = _exit_against_broker_holding(
+        monkeypatch, tmp_path, booked=0.051939, held=0.051938999)
+    assert broker.sent == [("AVGO", -0.051938999)]
+    assert broker.positions["AVGO"] == 0.0
+    assert book.get("momentum", {}).get("AVGO", 0.0) == 0.0
+
+
+def test_a_real_shortfall_is_not_papered_over(monkeypatch, tmp_path):
+    """LLY: booked 0.251332, Alpaca held 0.244511 — that is drift, not rounding."""
+    broker, book = _exit_against_broker_holding(
+        monkeypatch, tmp_path, booked=0.251332, held=0.244511)
+    assert broker.positions["AVGO"] == 0.244511    # rejected, nothing sold
+    assert book["momentum"]["AVGO"] == 0.251332    # book untouched
+
+
 def test_sleeve_flattens_its_own_holding(monkeypatch, tmp_path):
     import json
     picks = {"sector_rotation": {"model": "rs", "symbol": "XLK"}}

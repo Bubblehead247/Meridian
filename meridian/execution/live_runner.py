@@ -156,6 +156,29 @@ def _today_signals(model, prices_by_symbol: dict[str, pd.Series]) -> dict[str, i
         return {sym: int(sig_series.iloc[-1])} if len(sig_series) else {sym: 0}
 
 
+#: A sell this close to the broker's holding is the same shares, rounded
+#: differently. Well below the smallest real order (a $1 minimum is 1e-4 of
+#: even a $10,000 share) — genuine drift is left for the broker to reject.
+SELL_ROUNDING_TOL = 1e-5
+
+
+def _clamp_sell_to_held(broker: BaseBroker, symbol: str, net_qty: float) -> float:
+    """Trim a sell to the broker's holding when they differ only by rounding.
+
+    The books keep 6 decimals; Alpaca keeps 9 and can hold 0.051938999 where
+    the books say 0.051939. Selling the booked amount is then "insufficient qty
+    available" and the exit is rejected again every session: AVGO for 11
+    straight sessions from 2026-09-11, AAPL and XLV for days in August.
+    """
+    try:
+        held = broker.get_position(symbol)
+    except Exception:
+        return net_qty
+    if 0 < held < -net_qty <= held + SELL_ROUNDING_TOL:
+        return -held
+    return net_qty
+
+
 def run_paper_session(
     broker: BaseBroker,
     *,
@@ -349,6 +372,9 @@ def run_paper_session(
                 else:
                     notify_exit(synthetic, leg.family, leg.model, last_close=price)
             continue
+
+        if net_qty < 0:
+            net_qty = _clamp_sell_to_held(broker, sym, net_qty)
 
         try:
             real_fill = broker.market_order(sym, net_qty)
