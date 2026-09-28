@@ -118,6 +118,12 @@ Sources: [Pod shop risk limits](https://hedgefundinterview.com/pod-shop-risk-lim
   shadow); 12 months or 30 trades of shadow before capital; ramp ⅓ → ⅔ → full.
 - **−15% confirmed after the 2008 correction** (returns study step 4): the core is C1 scaled to
   about 78% invested (rest in T-bills), expected about 6.5%/yr through a 2008-type crisis.
+- **2026-09-28: the C1 decision is REOPENED** by the pre-registered 2008 check
+  (`structure_2008_check.json`). At a matched −15% drawdown over 2008–2026 the 8-sleeve
+  baseline makes 7.1%/yr and C1 6.5%. Trend and momentum halved their 2008–10 drawdowns;
+  sector rotation and long_term_etf did not help. This is a near-tie on one path's worst
+  drawdown, but it removes the case for retiring trend and momentum. The next step is a
+  pre-registered core of 60/40 + trend + momentum. Claude's review: `research/2026-10-review/claude_review/`.
 - Still open: switch timing for the core book, and whether pods hedge their beta.
 
 ## 7. Original decision list
