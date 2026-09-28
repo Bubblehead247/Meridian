@@ -1,0 +1,12 @@
+plan meridian-structure-2026-10 fingerprint 35bdb70f23f9, final run logged
+
+| Portfolio | 2011-15 Sharpe / DD | 2016-20 Sharpe / DD | 2021-26/06 Sharpe / DD | Full CAGR / Sharpe / DD | Non-inferior? |
+|---|---|---|---|---|---|
+| **Baseline (honest 8 sleeves)** | 0.77 / -8.5% | 0.97 / -15.0% | 1.21 / -7.6% | +8.0% / 1.00 / -15.0% | — |
+| C1 | 0.99 / -6.9% | 1.16 / -15.2% | 1.21 / -9.1% | +9.1% / 1.13 / -15.2% | yes |
+| C2 | 0.69 / -12.4% | 1.03 / -13.9% | 1.20 / -8.6% | +8.6% / 0.98 / -13.9% | no |
+| C3 (post-hoc) | 0.83 / -8.4% | 1.06 / -16.3% | 1.35 / -8.1% | +9.1% / 1.09 / -16.3% | yes |
+
+alpha vs baseline (NW): C1 +1.51% (t +2.24), C2 +0.55% (t +0.76), C3 +1.21% (t +2.03)
+
+WINNER (fewest sleeves, then Sharpe): C1
