@@ -122,8 +122,11 @@ Sources: [Pod shop risk limits](https://hedgefundinterview.com/pod-shop-risk-lim
   (`structure_2008_check.json`). At a matched −15% drawdown over 2008–2026 the 8-sleeve
   baseline makes 7.1%/yr and C1 6.5%. Trend and momentum halved their 2008–10 drawdowns;
   sector rotation and long_term_etf did not help. This is a near-tie on one path's worst
-  drawdown, but it removes the case for retiring trend and momentum. The next step is a
-  pre-registered core of 60/40 + trend + momentum. Claude's review: `research/2026-10-review/claude_review/`.
+  drawdown, but it removes the case for retiring trend and momentum. **Next candidate (corrected
+  2026-09-28 after the owner asked why 60/40 would help):** not 60/40 + timing. At a −15% cap,
+  60/40's 2008 drawdown (−30.8%) is what forced C1 down to 78% invested. Pre-register the honest
+  8-sleeve fund with sector rotation and SVXY retired to T-bills, against the full honest fund,
+  both at a matched −15% drawdown over 2008–2026. Claude's review: `research/2026-10-review/claude_review/`.
 - Still open: switch timing for the core book, and whether pods hedge their beta.
 
 ## 7. Original decision list
