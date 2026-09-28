@@ -1,0 +1,30 @@
+{
+  "id": "faber-gtaa-5etf",
+  "written": "2026-09-27, committed before any return of this rule on these ETFs was computed",
+  "hypothesis": "Faber's 10-month moving-average timing rule, applied to five asset-class ETFs held in equal weights, earns positive alpha over simply holding the same five ETFs equal-weighted.",
+  "source": "Mebane T. Faber, 'A Quantitative Approach to Tactical Asset Allocation', working paper May 2006, The Journal of Wealth Management Spring 2007 (SSRN 962461). Rule text: 'Buy when monthly price > 10-month SMA. Sell and move to cash when monthly price < 10-month SMA.' Updated once a month on the last day of the month; total return series; cash = 90-day T-bills.",
+  "why_out_of_sample": "The rule was published in May 2006. Every ETF-era day tested here comes after that. The rule is not tuned: one config is registered.",
+  "universe": {
+    "SPY": "S&P 500",
+    "EFA": "MSCI EAFE",
+    "IEF": "US 7-10y Treasuries (paper: 10-year Treasury)",
+    "GSG": "S&P GSCI commodities",
+    "VNQ": "US REITs (paper: NAREIT)"
+  },
+  "rule": "At each month-end close, for each ETF: hold its 20% if its total-return price (adj_close) is above the mean of its last 10 month-end prices, else hold that 20% in T-bills. Weights reset to 20% each month. Signal and trade at the same month-end close, as in the paper.",
+  "costs": "10 bps per side on each month's change in weights",
+  "cash": "^IRX 13-week T-bill yield / 252 per day, lagged one day",
+  "test_start": "2007-05-01",
+  "test_end": "2026-09-25",
+  "holdout_start": null,
+  "configs": [{"sma_months": 10}],
+  "benchmark": "PRIMARY: the same five ETFs held 20% each, rebalanced monthly (the paper's own comparison), total returns. SECONDARY, non-gating: regression on SPY and IEF; 60/40 SPY/IEF; SPY.",
+  "pass_rule": {"t_alpha_min": 2.0, "statistic": "Newey-West (21 lags) t of the daily alpha of (strategy - T-bills) regressed on (primary benchmark - T-bills)"},
+  "power_note": "About 19.4 years: at t >= 2 the test can detect an information ratio of about 0.45 or more. A smaller real edge would read as 'not significant'.",
+  "consequences": {
+    "pass": "Propose it as a replacement Meridian sleeve (for the SPY/XLK trend sleeve and/or the no-edge sleeves); a fund-level backtest on the honest baseline follows, and it needs the user's OK before anything changes live.",
+    "positive_not_significant": "No live change. Run it as a shadow sleeve (signals logged, no orders) from 2026-10-01 and judge it on 2027-09-30.",
+    "negative": "Drop it."
+  },
+  "paper_caveat": "Alpaca paper pays no dividends or interest, so a live paper version would understate the T-bill share and the ETF dividends."
+}
