@@ -70,7 +70,7 @@ momentum at the switch removes the crash protection that let the baseline meet �
 scaling down.
 
 **Next candidate (corrected 2026-09-28):** I first suggested 60/40 + trend + momentum. The
-owner asked why, given that 60/40 scores lower, and he was right: at a −15% cap what counts is
+owner asked why, given that 60/40 scores lower, and the question was right: at a −15% cap what counts is
 return per unit of worst drawdown (baseline 0.47, C1 0.42, 60/40 0.28, SPY 0.21). 60/40's 2008
 drawdown is what forced C1 down to 78%. The candidate with the fewest new choices is the honest
 8-sleeve fund with sector rotation and SVXY retired to T-bills, pre-registered against the full
