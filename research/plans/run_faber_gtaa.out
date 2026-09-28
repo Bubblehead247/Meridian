@@ -1,0 +1,19 @@
+plan faber-gtaa-5etf  fingerprint 4e473c6507af  window 2007-05-01..2026-09-25  (19.4 years)
+power: detects an information ratio >= 0.45 at the plan's t
+
+PRIMARY (vs EW hold of the same 5 ETFs): alpha +2.07%/yr, NW t +1.68, beta 0.35, IR +0.33, R2 0.40
+VERDICT: not passed
+
+secondary (vs SPY + IEF): alpha +1.01%/yr, NW t +0.76, betas SPY 0.25 IEF 0.10
+
+| Portfolio | Stats |
+|---|---|
+| **EW hold of the 5 ETFs (baseline)** | CAGR +5.7%  vol 15.1%  Sharpe 0.45  maxDD -48.6% |
+| Faber 10-month rule | CAGR +5.2%  vol 8.2%  Sharpe 0.66  maxDD -15.0% |
+| SPY | CAGR +10.9%  vol 19.7%  Sharpe 0.62  maxDD -55.2% |
+| 60/40 SPY/IEF | CAGR +8.3%  vol 11.3%  Sharpe 0.77  maxDD -31.4% |
+
+By period (CAGR): strategy / EW hold
+  2007-2012: +3.9% / +3.0%
+  2013-2019: +3.5% / +4.8%
+  2020-2026: +8.0% / +9.1%
