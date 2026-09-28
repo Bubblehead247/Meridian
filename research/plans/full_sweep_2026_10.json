@@ -1,0 +1,828 @@
+{
+ "id": "full-sweep-2026-10",
+ "written": "2026-09-28, before any sweep result. Seen already: C1, the honest baseline, 60/40, SPY, Faber and the per-sleeve results of 2026-09-27/28 (the fixed and Faber rows below are not new information).",
+ "hypothesis": "Find the model with the most return at the owner's -15% worst drawdown (no leverage), measure how much of any winner is selection luck, and decide whether a wider ETF universe helps.",
+ "universes": {
+  "U5": [
+   "SPY",
+   "EFA",
+   "IEF",
+   "GSG",
+   "VNQ"
+  ],
+  "U8": [
+   "SPY",
+   "QQQ",
+   "IWM",
+   "EFA",
+   "EEM",
+   "GLD",
+   "IEF",
+   "TLT"
+  ],
+  "U12": [
+   "SPY",
+   "QQQ",
+   "IWM",
+   "VGK",
+   "EWJ",
+   "EEM",
+   "VNQ",
+   "DBC",
+   "GLD",
+   "HYG",
+   "LQD",
+   "TLT"
+  ]
+ },
+ "universe_note": "U12 is the published PAA list (Keller & Keuning 2016; tickers as listed by Allocate Smartly). HYG starts 2007-04 and counts as not held until it has enough history. Single stocks are out of scope: honest tests need paid point-in-time index membership. Managed-futures ETFs (long/short trend) start 2019-2020, too late to include 2008.",
+ "families": {
+  "hold": "fixed weights every month: EW = 1/N, IV = inverse 63-day volatility (normalised over the universe)",
+  "trend": "each asset keeps its base weight if its month-end price > the mean of its last L month-end prices, else that weight goes to T-bills (Faber rule when L=10, EW)",
+  "tsmom": "each asset keeps its base weight if its L-month total return beats T-bills over the same months (blend = mean of 1, 3, 6 and 12 months), else T-bills",
+  "dualmom": "rank by L-month return; hold the top K at 1/K each if it beats T-bills over L months, else that slot is T-bills",
+  "paa": "PAA: MOM = price / mean(last 13 month-end prices) - 1; n = assets with MOM > 0; IEF weight = clip((12 - n) / 6, 0, 1); the rest split equally over the top 6 by MOM",
+  "meridian": "BASELINE8 = honest 8-sleeve fund (as in structure_2008_check); TRIMMED = BASELINE8 with sector_rotation and SVXY in T-bills; C1 and C3 as in structure_2008_check. Idle share of timed sleeves in T-bills",
+  "static": "SIXTY40 = 60% SPY / 40% IEF; SPY; ALLWEATHER = 30% SPY / 40% TLT / 15% IEF / 7.5% GLD / 7.5% GSG (the widely published retail approximation, not Bridgewater's fund)",
+  "blend": "fixed 50/50 mixes of two candidates' daily returns"
+ },
+ "tags": {
+  "live-ready": "runs on today's engine as fixed-weight sleeves",
+  "small-build": "needs a monthly-signal model per asset sleeve (small)",
+  "engine-change": "needs dynamic weights, fixed-slot sizing or a variable protection share (engine change)"
+ },
+ "data": "Total returns (adj_close), 10 bps per side on weight changes, month-end signals traded at that close, T-bills = ^IRX/252 lagged a day, long-only, idle cash in T-bills",
+ "test_start": "2008-01-01",
+ "test_end": "2026-06-26",
+ "holdout_start": null,
+ "objective": "CAGR after scaling toward T-bills (k <= 1, no leverage) so the worst drawdown is no deeper than -15% over the window",
+ "gates": [
+  "TREND10-EW-U5 must reproduce the Faber run (2007-05-01..2026-09-25): CAGR 5.2%, max DD -15.0%, Sharpe 0.66 (rounded)",
+  "BASELINE8 must reproduce structure_2008_check (2008-01..2026-06): CAGR 7.1%, max DD -15.0%",
+  "If either fails, stop: no results are read"
+ ],
+ "tests": {
+  "full_sample": "objective over 2008-01..2026-06 for every candidate (in-sample; shown, not trusted)",
+  "forward_walk_forward": "each Jan 1 from 2012 to 2026: pick the best objective on 2007-07..end of the prior year (k fitted there), hold it for that year; stitch the years. Run over all candidates and over deployable ones (live-ready + small-build). BASELINE8, C1 and SIXTY40 go through the same yearly k-fitting for comparison",
+  "reverse_crash": "pick the best objective on 2011-01..2026-06 (k fitted there), then run it on 2008-01..2010-12: the only unseen-crash test this data allows. Same for deployable-only, BASELINE8, C1, SIXTY40",
+  "pbo": "Meridian's CPCV PBO on Sharpe (10 groups, 5 test groups, 21-bar purge and embargo) over 2007-07..2026-06: a general overfitting gauge for selecting by Sharpe, NOT a measure of the drawdown-capped selection",
+  "deflated_sharpe": "for the Sharpe-best candidate, with n = 96 (this sweep) and n = 809 (cumulative trials in this line of research: 707 re-selection + 1 Faber + 3 structure + 2 check + 96)",
+  "universe": "paired full-sample objective, same family and parameters: U12 vs U8, U12 vs U5, U8 vs U5"
+ },
+ "decision_rules": {
+  "recommendation": "Among live-ready and small-build candidates, recommend the simplest whose full-sample objective is within 0.5%/yr of the best deployable one; tie-break by how often the deployable forward walk-forward picked it in 2022-2026. Simplicity order: static holds < per-asset trend/TSMOM < Meridian multi-sleeve structures < blends; fewer assets first. Flag it if its reverse-crash drawdown (k fitted on 2011-2026) is deeper than -20%. Also report the overall best (any tag) and its build cost, and say plainly when several candidates are a near-tie.",
+  "selection_value": "The sweep 'adds value' only if the forward walk-forward track beats BASELINE8's walk-forward track by more than 0.5%/yr with a drawdown no deeper, AND the reverse-crash pick's 2008-10 drawdown is no deeper than BASELINE8's. Otherwise say the sweep found no reliable improvement over the baseline.",
+  "expand_universe": "Recommend expanding to U12 only if U12 beats U8 in at least 2/3 of paired full-sample comparisons AND a U12 candidate is the reverse-crash pick or the majority of forward walk-forward picks. Otherwise: no expansion needed among ETF asset classes."
+ },
+ "configs": [
+  {
+   "id": "HOLD-EW-U5",
+   "family": "hold",
+   "tag": "live-ready",
+   "universe": "U5",
+   "weighting": "EW"
+  },
+  {
+   "id": "HOLD-IV-U5",
+   "family": "hold",
+   "tag": "engine-change",
+   "universe": "U5",
+   "weighting": "IV"
+  },
+  {
+   "id": "TREND6-EW-U5",
+   "family": "trend",
+   "tag": "small-build",
+   "universe": "U5",
+   "sma_months": 6,
+   "weighting": "EW"
+  },
+  {
+   "id": "TREND6-IV-U5",
+   "family": "trend",
+   "tag": "engine-change",
+   "universe": "U5",
+   "sma_months": 6,
+   "weighting": "IV"
+  },
+  {
+   "id": "TREND10-EW-U5",
+   "family": "trend",
+   "tag": "small-build",
+   "universe": "U5",
+   "sma_months": 10,
+   "weighting": "EW"
+  },
+  {
+   "id": "TREND10-IV-U5",
+   "family": "trend",
+   "tag": "engine-change",
+   "universe": "U5",
+   "sma_months": 10,
+   "weighting": "IV"
+  },
+  {
+   "id": "TREND12-EW-U5",
+   "family": "trend",
+   "tag": "small-build",
+   "universe": "U5",
+   "sma_months": 12,
+   "weighting": "EW"
+  },
+  {
+   "id": "TREND12-IV-U5",
+   "family": "trend",
+   "tag": "engine-change",
+   "universe": "U5",
+   "sma_months": 12,
+   "weighting": "IV"
+  },
+  {
+   "id": "TSMOM3-EW-U5",
+   "family": "tsmom",
+   "tag": "small-build",
+   "universe": "U5",
+   "lookback": 3,
+   "weighting": "EW"
+  },
+  {
+   "id": "TSMOM3-IV-U5",
+   "family": "tsmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": 3,
+   "weighting": "IV"
+  },
+  {
+   "id": "TSMOM6-EW-U5",
+   "family": "tsmom",
+   "tag": "small-build",
+   "universe": "U5",
+   "lookback": 6,
+   "weighting": "EW"
+  },
+  {
+   "id": "TSMOM6-IV-U5",
+   "family": "tsmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": 6,
+   "weighting": "IV"
+  },
+  {
+   "id": "TSMOM12-EW-U5",
+   "family": "tsmom",
+   "tag": "small-build",
+   "universe": "U5",
+   "lookback": 12,
+   "weighting": "EW"
+  },
+  {
+   "id": "TSMOM12-IV-U5",
+   "family": "tsmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": 12,
+   "weighting": "IV"
+  },
+  {
+   "id": "TSMOMblend-EW-U5",
+   "family": "tsmom",
+   "tag": "small-build",
+   "universe": "U5",
+   "lookback": "blend",
+   "weighting": "EW"
+  },
+  {
+   "id": "TSMOMblend-IV-U5",
+   "family": "tsmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": "blend",
+   "weighting": "IV"
+  },
+  {
+   "id": "DUALMOM3-K2-U5",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": 3,
+   "top_k": 2
+  },
+  {
+   "id": "DUALMOM3-K3-U5",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": 3,
+   "top_k": 3
+  },
+  {
+   "id": "DUALMOM3-K4-U5",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": 3,
+   "top_k": 4
+  },
+  {
+   "id": "DUALMOM6-K2-U5",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": 6,
+   "top_k": 2
+  },
+  {
+   "id": "DUALMOM6-K3-U5",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": 6,
+   "top_k": 3
+  },
+  {
+   "id": "DUALMOM6-K4-U5",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": 6,
+   "top_k": 4
+  },
+  {
+   "id": "DUALMOM12-K2-U5",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": 12,
+   "top_k": 2
+  },
+  {
+   "id": "DUALMOM12-K3-U5",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": 12,
+   "top_k": 3
+  },
+  {
+   "id": "DUALMOM12-K4-U5",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": 12,
+   "top_k": 4
+  },
+  {
+   "id": "DUALMOMblend-K2-U5",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": "blend",
+   "top_k": 2
+  },
+  {
+   "id": "DUALMOMblend-K3-U5",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": "blend",
+   "top_k": 3
+  },
+  {
+   "id": "DUALMOMblend-K4-U5",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U5",
+   "lookback": "blend",
+   "top_k": 4
+  },
+  {
+   "id": "HOLD-EW-U8",
+   "family": "hold",
+   "tag": "live-ready",
+   "universe": "U8",
+   "weighting": "EW"
+  },
+  {
+   "id": "HOLD-IV-U8",
+   "family": "hold",
+   "tag": "engine-change",
+   "universe": "U8",
+   "weighting": "IV"
+  },
+  {
+   "id": "TREND6-EW-U8",
+   "family": "trend",
+   "tag": "small-build",
+   "universe": "U8",
+   "sma_months": 6,
+   "weighting": "EW"
+  },
+  {
+   "id": "TREND6-IV-U8",
+   "family": "trend",
+   "tag": "engine-change",
+   "universe": "U8",
+   "sma_months": 6,
+   "weighting": "IV"
+  },
+  {
+   "id": "TREND10-EW-U8",
+   "family": "trend",
+   "tag": "small-build",
+   "universe": "U8",
+   "sma_months": 10,
+   "weighting": "EW"
+  },
+  {
+   "id": "TREND10-IV-U8",
+   "family": "trend",
+   "tag": "engine-change",
+   "universe": "U8",
+   "sma_months": 10,
+   "weighting": "IV"
+  },
+  {
+   "id": "TREND12-EW-U8",
+   "family": "trend",
+   "tag": "small-build",
+   "universe": "U8",
+   "sma_months": 12,
+   "weighting": "EW"
+  },
+  {
+   "id": "TREND12-IV-U8",
+   "family": "trend",
+   "tag": "engine-change",
+   "universe": "U8",
+   "sma_months": 12,
+   "weighting": "IV"
+  },
+  {
+   "id": "TSMOM3-EW-U8",
+   "family": "tsmom",
+   "tag": "small-build",
+   "universe": "U8",
+   "lookback": 3,
+   "weighting": "EW"
+  },
+  {
+   "id": "TSMOM3-IV-U8",
+   "family": "tsmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": 3,
+   "weighting": "IV"
+  },
+  {
+   "id": "TSMOM6-EW-U8",
+   "family": "tsmom",
+   "tag": "small-build",
+   "universe": "U8",
+   "lookback": 6,
+   "weighting": "EW"
+  },
+  {
+   "id": "TSMOM6-IV-U8",
+   "family": "tsmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": 6,
+   "weighting": "IV"
+  },
+  {
+   "id": "TSMOM12-EW-U8",
+   "family": "tsmom",
+   "tag": "small-build",
+   "universe": "U8",
+   "lookback": 12,
+   "weighting": "EW"
+  },
+  {
+   "id": "TSMOM12-IV-U8",
+   "family": "tsmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": 12,
+   "weighting": "IV"
+  },
+  {
+   "id": "TSMOMblend-EW-U8",
+   "family": "tsmom",
+   "tag": "small-build",
+   "universe": "U8",
+   "lookback": "blend",
+   "weighting": "EW"
+  },
+  {
+   "id": "TSMOMblend-IV-U8",
+   "family": "tsmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": "blend",
+   "weighting": "IV"
+  },
+  {
+   "id": "DUALMOM3-K2-U8",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": 3,
+   "top_k": 2
+  },
+  {
+   "id": "DUALMOM3-K3-U8",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": 3,
+   "top_k": 3
+  },
+  {
+   "id": "DUALMOM3-K4-U8",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": 3,
+   "top_k": 4
+  },
+  {
+   "id": "DUALMOM6-K2-U8",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": 6,
+   "top_k": 2
+  },
+  {
+   "id": "DUALMOM6-K3-U8",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": 6,
+   "top_k": 3
+  },
+  {
+   "id": "DUALMOM6-K4-U8",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": 6,
+   "top_k": 4
+  },
+  {
+   "id": "DUALMOM12-K2-U8",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": 12,
+   "top_k": 2
+  },
+  {
+   "id": "DUALMOM12-K3-U8",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": 12,
+   "top_k": 3
+  },
+  {
+   "id": "DUALMOM12-K4-U8",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": 12,
+   "top_k": 4
+  },
+  {
+   "id": "DUALMOMblend-K2-U8",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": "blend",
+   "top_k": 2
+  },
+  {
+   "id": "DUALMOMblend-K3-U8",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": "blend",
+   "top_k": 3
+  },
+  {
+   "id": "DUALMOMblend-K4-U8",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U8",
+   "lookback": "blend",
+   "top_k": 4
+  },
+  {
+   "id": "HOLD-EW-U12",
+   "family": "hold",
+   "tag": "live-ready",
+   "universe": "U12",
+   "weighting": "EW"
+  },
+  {
+   "id": "HOLD-IV-U12",
+   "family": "hold",
+   "tag": "engine-change",
+   "universe": "U12",
+   "weighting": "IV"
+  },
+  {
+   "id": "TREND6-EW-U12",
+   "family": "trend",
+   "tag": "small-build",
+   "universe": "U12",
+   "sma_months": 6,
+   "weighting": "EW"
+  },
+  {
+   "id": "TREND6-IV-U12",
+   "family": "trend",
+   "tag": "engine-change",
+   "universe": "U12",
+   "sma_months": 6,
+   "weighting": "IV"
+  },
+  {
+   "id": "TREND10-EW-U12",
+   "family": "trend",
+   "tag": "small-build",
+   "universe": "U12",
+   "sma_months": 10,
+   "weighting": "EW"
+  },
+  {
+   "id": "TREND10-IV-U12",
+   "family": "trend",
+   "tag": "engine-change",
+   "universe": "U12",
+   "sma_months": 10,
+   "weighting": "IV"
+  },
+  {
+   "id": "TREND12-EW-U12",
+   "family": "trend",
+   "tag": "small-build",
+   "universe": "U12",
+   "sma_months": 12,
+   "weighting": "EW"
+  },
+  {
+   "id": "TREND12-IV-U12",
+   "family": "trend",
+   "tag": "engine-change",
+   "universe": "U12",
+   "sma_months": 12,
+   "weighting": "IV"
+  },
+  {
+   "id": "TSMOM3-EW-U12",
+   "family": "tsmom",
+   "tag": "small-build",
+   "universe": "U12",
+   "lookback": 3,
+   "weighting": "EW"
+  },
+  {
+   "id": "TSMOM3-IV-U12",
+   "family": "tsmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": 3,
+   "weighting": "IV"
+  },
+  {
+   "id": "TSMOM6-EW-U12",
+   "family": "tsmom",
+   "tag": "small-build",
+   "universe": "U12",
+   "lookback": 6,
+   "weighting": "EW"
+  },
+  {
+   "id": "TSMOM6-IV-U12",
+   "family": "tsmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": 6,
+   "weighting": "IV"
+  },
+  {
+   "id": "TSMOM12-EW-U12",
+   "family": "tsmom",
+   "tag": "small-build",
+   "universe": "U12",
+   "lookback": 12,
+   "weighting": "EW"
+  },
+  {
+   "id": "TSMOM12-IV-U12",
+   "family": "tsmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": 12,
+   "weighting": "IV"
+  },
+  {
+   "id": "TSMOMblend-EW-U12",
+   "family": "tsmom",
+   "tag": "small-build",
+   "universe": "U12",
+   "lookback": "blend",
+   "weighting": "EW"
+  },
+  {
+   "id": "TSMOMblend-IV-U12",
+   "family": "tsmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": "blend",
+   "weighting": "IV"
+  },
+  {
+   "id": "DUALMOM3-K2-U12",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": 3,
+   "top_k": 2
+  },
+  {
+   "id": "DUALMOM3-K3-U12",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": 3,
+   "top_k": 3
+  },
+  {
+   "id": "DUALMOM3-K4-U12",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": 3,
+   "top_k": 4
+  },
+  {
+   "id": "DUALMOM6-K2-U12",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": 6,
+   "top_k": 2
+  },
+  {
+   "id": "DUALMOM6-K3-U12",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": 6,
+   "top_k": 3
+  },
+  {
+   "id": "DUALMOM6-K4-U12",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": 6,
+   "top_k": 4
+  },
+  {
+   "id": "DUALMOM12-K2-U12",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": 12,
+   "top_k": 2
+  },
+  {
+   "id": "DUALMOM12-K3-U12",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": 12,
+   "top_k": 3
+  },
+  {
+   "id": "DUALMOM12-K4-U12",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": 12,
+   "top_k": 4
+  },
+  {
+   "id": "DUALMOMblend-K2-U12",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": "blend",
+   "top_k": 2
+  },
+  {
+   "id": "DUALMOMblend-K3-U12",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": "blend",
+   "top_k": 3
+  },
+  {
+   "id": "DUALMOMblend-K4-U12",
+   "family": "dualmom",
+   "tag": "engine-change",
+   "universe": "U12",
+   "lookback": "blend",
+   "top_k": 4
+  },
+  {
+   "id": "PAA-U12",
+   "family": "paa",
+   "tag": "engine-change",
+   "universe": "U12",
+   "protection": "IEF",
+   "top_k": 6,
+   "a": 2
+  },
+  {
+   "id": "BASELINE8",
+   "family": "meridian",
+   "tag": "live-ready"
+  },
+  {
+   "id": "TRIMMED",
+   "family": "meridian",
+   "tag": "live-ready"
+  },
+  {
+   "id": "C1",
+   "family": "meridian",
+   "tag": "live-ready"
+  },
+  {
+   "id": "C3",
+   "family": "meridian",
+   "tag": "live-ready"
+  },
+  {
+   "id": "SIXTY40",
+   "family": "static",
+   "tag": "live-ready"
+  },
+  {
+   "id": "SPY",
+   "family": "static",
+   "tag": "live-ready"
+  },
+  {
+   "id": "ALLWEATHER",
+   "family": "static",
+   "tag": "live-ready"
+  },
+  {
+   "id": "B1-6040+TREND10",
+   "family": "blend",
+   "tag": "small-build",
+   "parts": {
+    "SIXTY40": 0.5,
+    "TREND10-EW-U12": 0.5
+   }
+  },
+  {
+   "id": "B2-6040+DUALMOM12K3",
+   "family": "blend",
+   "tag": "engine-change",
+   "parts": {
+    "SIXTY40": 0.5,
+    "DUALMOM12-K3-U12": 0.5
+   }
+  },
+  {
+   "id": "B3-6040+PAA",
+   "family": "blend",
+   "tag": "engine-change",
+   "parts": {
+    "SIXTY40": 0.5,
+    "PAA-U12": 0.5
+   }
+  },
+  {
+   "id": "B4-TREND10+DUALMOM12K3",
+   "family": "blend",
+   "tag": "engine-change",
+   "parts": {
+    "TREND10-EW-U12": 0.5,
+    "DUALMOM12-K3-U12": 0.5
+   }
+  }
+ ],
+ "consequences": {
+  "any": "A proposal to the owner only. C1 stays unmerged; nothing live changes from this sweep."
+ }
+}
