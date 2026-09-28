@@ -1,0 +1,36 @@
+{
+ "id": "pod-dualmom-6m-top4-u8-forward",
+ "written": "2026-09-28, before any forward data exists. The shadow starts with the decision at the 2026-09-30 close.",
+ "hypothesis": "Dual momentum (6-month, top 4 of SPY QQQ IWM EFA EEM GLD IEF TLT) runs as specified and earns positive alpha over holding the same 8 ETFs, out of sample.",
+ "skill_status": "No clean pre-registered skill test exists: its parameters are the best of 96 on 2008-2026 data. It passed the sweep's reverse crash test (picked on 2011-2026 only, it made +8.4% with a -13.1% max DD in 2008-10). Treat the forward period as the only honest evidence.",
+ "rule": "At each month's last close, rank SPY QQQ IWM EFA EEM GLD IEF TLT by 6-month total return (dividend-adjusted); the top 4 each get 25% if their 6-month return beats T-bills over the same 6 months, otherwise that slot is in T-bills. Held all month. 10 bps per side.",
+ "shadow": "meridian/execution/shadow_dualmom.py appends each completed month-end decision once to ledger/shadow/dualmom_6m_top4_u8.jsonl (append-only); no orders.",
+ "benchmark": "Equal-weight hold of the same 8 ETFs (total returns). Beta fixed at registration: 0.540 (daily OLS, excess of T-bills, 2008-01..2026-06).",
+ "alpha_pnl": "pod daily return - T-bill - 0.540 x (benchmark daily return - T-bill), summed; this is the P&L the pod stop rules use (-5% halve, -7.5% back to shadow) if it is ever funded.",
+ "trade": "an ETF entering or leaving the held set between consecutive month-end decisions (each counts once)",
+ "test_start": "2026-10-01",
+ "test_end": "2027-09-30",
+ "holdout_start": null,
+ "minimum_shadow": "12 months OR 30 trades, whichever is LATER (owner's pod rules). If 30 trades haven't happened by 2027-09-30, the judge date moves to the month-end when they have.",
+ "fidelity": "every logged decision must equal the rule recomputed from the same month-end data (tolerance: 0 differing decisions); shadow performance is computed from the LOGGED weights.",
+ "power_note": "One year can only detect an information ratio of about 2 at t = 2 (t ~ IR x sqrt(years)). The shadow is an implementation check plus a sanity read of alpha, not proof of skill.",
+ "configs": [
+  {
+   "id": "DUALMOM6-K4-U8"
+  }
+ ],
+ "pass_rule": {
+  "t_alpha_min": null,
+  "gates_at_judge_date": [
+   "fidelity: 0 differing decisions",
+   "minimum shadow met",
+   "no alpha-P&L drawdown worse than -7.5%"
+  ],
+  "funding": "the owner decides under the pod rules; passing these gates only makes it eligible"
+ },
+ "consequences": {
+  "gates_pass": "Present to the owner as eligible for a pod at 1/3 of its target risk (pod ramp rules), with the core/pod risk split decided first.",
+  "fidelity_fails": "Fix the implementation and restart the shadow; the clock resets.",
+  "alpha_pnl_breach": "Stays in shadow; re-examine."
+ }
+}

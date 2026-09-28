@@ -1,0 +1,24 @@
+{
+ "id": "pod-dualmom-6m-top4-u8-historical",
+ "written": "2026-09-28, before this alpha test was computed (only the pod's beta, 0.540, was measured to fix the forward plan).",
+ "hypothesis": "Informational: does DUALMOM6-K4-U8 show alpha over simply holding the same 8 ETFs equal-weight, 2008-2026/06?",
+ "contamination": "NOT a clean test. These parameters (6 months, top 4, U8) were the best of 96 candidates on this same data (research/plans/full_sweep_2026_10.json), and U8 was chosen in 2026-09 with hindsight. A pass here is not evidence of skill; the forward plan (pod-dualmom-6m-top4-u8-forward) is the real test.",
+ "rule": "At each month's last close, rank SPY QQQ IWM EFA EEM GLD IEF TLT by 6-month total return (dividend-adjusted); the top 4 each get 25% if their 6-month return beats T-bills over the same 6 months, otherwise that slot is in T-bills. Held all month. 10 bps per side.",
+ "benchmark": "Equal-weight hold of the same 8 ETFs, total returns, daily fixed weights",
+ "test_start": "2008-01-01",
+ "test_end": "2026-06-26",
+ "holdout_start": null,
+ "configs": [
+  {
+   "id": "DUALMOM6-K4-U8"
+  }
+ ],
+ "pass_rule": {
+  "t_alpha_min": 2.0,
+  "statistic": "Newey-West (21 lags) t of daily alpha over the benchmark, excess of T-bills",
+  "note": "reported, not a funding gate (see contamination)"
+ },
+ "consequences": {
+  "any": "Information for the owner only; nothing is funded from this result."
+ }
+}
