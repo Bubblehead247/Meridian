@@ -77,3 +77,30 @@ def test_performance_uses_logged_weights_and_counts_trades(tmp_path):
     assert perf["pod_return"] == pytest.approx(expected_pod, rel=1e-6)
     assert perf["trades"] == 0                          # the same four held every month
     assert perf["bench_return"] == pytest.approx((1 + rets.mean(axis=1)).prod() - 1, rel=1e-6)
+
+
+def test_each_decision_stores_its_inputs_and_follows_from_them(tmp_path):
+    log = tmp_path / "dm.jsonl"
+    px = _prices()
+    sd.update(px, _rf(px), log=log)
+    row = json.loads(log.read_text().splitlines()[0])
+    assert set(row["inputs"]["returns_6m"]) == set(sd.ETFS)
+    assert sd._decide(row["inputs"]["returns_6m"], row["inputs"]["tbill_hurdle"]) == row["weights"]
+
+
+def test_a_later_data_revision_is_reported_as_a_revision_not_a_fidelity_failure(tmp_path):
+    log = tmp_path / "dm.jsonl"
+    px = _prices(end="2026-10-15")
+    sd.update(px, _rf(px), log=log)
+    revised = px.copy()
+    revised.loc[:"2026-09-30", "TLT"] *= 3.0 ** np.linspace(0, 1, len(revised.loc[:"2026-09-30"]))
+    assert sd.fidelity_mismatches(revised, _rf(revised), log=log) == 0   # the code followed its inputs
+    assert sd.data_revisions(revised, _rf(revised), log=log) == 1        # today's data would decide otherwise
+
+
+def test_performance_reports_the_alpha_pnl_drawdown_the_stop_rule_uses(tmp_path):
+    log = tmp_path / "dm.jsonl"
+    px = _prices()
+    sd.update(px, _rf(px, 0.0), log=log)
+    perf = sd.performance(px, _rf(px, 0.0), log=log, cost_bps=0.0)
+    assert "alpha_pnl_max_drawdown" in perf and perf["alpha_pnl_max_drawdown"] <= 0.0

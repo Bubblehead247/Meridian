@@ -46,11 +46,29 @@ def targets(month_px: pd.DataFrame, tbill_index: pd.Series) -> pd.DataFrame:
     return (top & r.gt(hurdle, axis=0)).astype(float) / TOP_K
 
 
-def _completed_targets(prices: pd.DataFrame, rf: pd.Series) -> pd.DataFrame:
+def _completed_inputs(prices: pd.DataFrame, rf: pd.Series) -> tuple[pd.DataFrame, pd.Series]:
+    """(6-month returns per ETF, T-bill hurdle) at each completed month-end."""
     px = prices[list(ETFS)].dropna()
     ends = month_ends(px.index)
     if len(ends) and ends[-1] == px.index[-1]:
         ends = ends[:-1]      # the newest month is complete only once a later bar exists
+    tbill_index = (1 + rf.reindex(px.index).fillna(0.0)).cumprod()
+    month_px, tb = px.loc[ends], tbill_index.loc[ends]
+    return month_px / month_px.shift(LOOKBACK_MONTHS) - 1, tb / tb.shift(LOOKBACK_MONTHS) - 1
+
+
+def _decide(returns: pd.Series | dict, hurdle: float) -> dict[str, float]:
+    """One month-end decision from its inputs (the rule, stated once)."""
+    r = pd.Series(returns, dtype=float)
+    top = r.rank(ascending=False, method="first") <= TOP_K
+    return {k: (1.0 / TOP_K if (top[k] and r[k] > hurdle) else 0.0) for k in ETFS}
+
+
+def _completed_targets(prices: pd.DataFrame, rf: pd.Series) -> pd.DataFrame:
+    px = prices[list(ETFS)].dropna()
+    ends = month_ends(px.index)
+    if len(ends) and ends[-1] == px.index[-1]:
+        ends = ends[:-1]
     tbill_index = (1 + rf.reindex(px.index).fillna(0.0)).cumprod()
     return targets(px.loc[ends], tbill_index.loc[ends])
 
@@ -63,16 +81,20 @@ def _rows(log: Path) -> list[dict]:
 
 def update(prices: pd.DataFrame, rf: pd.Series, log: Path = LOG) -> list[dict]:
     """Append each completed month-end decision from SHADOW_START's month on, once each."""
-    tg = _completed_targets(prices, rf)
+    rets, hurdle = _completed_inputs(prices, rf)
     first = SHADOW_START - pd.offsets.MonthBegin(1)
     seen = {r["month_end"] for r in _rows(log)}
     new = []
-    for me, row in tg.loc[first:].iterrows():
+    for me, row in rets.loc[first:].iterrows():
         key = str(me.date())
-        if key in seen:
+        if key in seen or row.isna().any():
             continue
-        new.append({"month_end": key, "weights": {k: float(v) for k, v in row.items()},
-                    "tbills": float(1.0 - row.sum()), "logged_at": datetime.now(timezone.utc).isoformat()})
+        weights = _decide(row.to_dict(), float(hurdle.loc[me]))
+        new.append({"month_end": key, "weights": weights, "tbills": float(1.0 - sum(weights.values())),
+                    # inputs kept so fidelity can separate a code bug from a later data revision
+                    "inputs": {"returns_6m": {k: float(v) for k, v in row.items()},
+                               "tbill_hurdle": float(hurdle.loc[me])},
+                    "logged_at": datetime.now(timezone.utc).isoformat()})
     if new:
         log.parent.mkdir(parents=True, exist_ok=True)
         with log.open("a", encoding="utf-8") as f:
@@ -82,14 +104,27 @@ def update(prices: pd.DataFrame, rf: pd.Series, log: Path = LOG) -> list[dict]:
 
 
 def fidelity_mismatches(prices: pd.DataFrame, rf: pd.Series, log: Path = LOG) -> int:
-    """Logged decisions that differ from the rule recomputed on the same month-end data."""
-    tg = _completed_targets(prices, rf)
+    """Logged decisions that don't follow from their own logged inputs (a code/rule bug). Must be 0."""
     bad = 0
+    for r in _rows(log):
+        inp = r.get("inputs")
+        if inp is None:
+            continue
+        again = _decide(inp["returns_6m"], inp["tbill_hurdle"])
+        if any(abs(again[k] - r["weights"].get(k, 0.0)) > 1e-9 for k in ETFS):
+            bad += 1
+    return bad
+
+
+def data_revisions(prices: pd.DataFrame, rf: pd.Series, log: Path = LOG) -> int:
+    """Logged decisions that today's data would decide differently (vendor revisions, not bugs)."""
+    tg = _completed_targets(prices, rf)
+    changed = 0
     for r in _rows(log):
         me = pd.Timestamp(r["month_end"])
         if me in tg.index and any(abs(tg.loc[me, k] - v) > 1e-9 for k, v in r["weights"].items()):
-            bad += 1
-    return bad
+            changed += 1
+    return changed
 
 
 def performance(prices: pd.DataFrame, rf: pd.Series, log: Path = LOG, cost_bps: float = 10.0) -> dict | None:
@@ -110,9 +145,12 @@ def performance(prices: pd.DataFrame, rf: pd.Series, log: Path = LOG, cost_bps: 
     bench = ret.mean(axis=1)
     held = (w > 0).astype(int)
     trades = int(held.diff().abs().sum().sum())
+    alpha_cum = ((pod - t) - BETA * (bench - t)).cumsum()
     return {"days": len(pod), "pod_return": float((1 + pod).prod() - 1),
             "bench_return": float((1 + bench).prod() - 1),
-            "alpha_pnl": float(((pod - t) - BETA * (bench - t)).sum()),
+            "alpha_pnl": float(alpha_cum.iloc[-1]),
+            # the plan's gate: no alpha-P&L drawdown worse than -7.5% (pod stop rule)
+            "alpha_pnl_max_drawdown": float((alpha_cum - alpha_cum.cummax().clip(lower=0.0)).min()),
             "trades": trades, "latest": rows[-1]}
 
 
@@ -126,10 +164,12 @@ def run_shadow() -> str:
     new = update(px, rf)
     perf = performance(px, rf)
     bad = fidelity_mismatches(px, rf)
-    msg = f"Dual momentum shadow: {len(new)} new month-end decision(s) logged; fidelity mismatches {bad}"
+    revised = data_revisions(px, rf)
+    msg = (f"Dual momentum shadow: {len(new)} new month-end decision(s) logged; fidelity mismatches {bad}; "
+           f"data revisions {revised}")
     if perf and perf["days"]:
         held = [k for k, v in perf["latest"]["weights"].items() if v > 0]
         msg += (f"; since {SHADOW_START.date()}: pod {perf['pod_return']:+.2%}, hold {perf['bench_return']:+.2%}, "
-                f"alpha P&L {perf['alpha_pnl']:+.2%}, trades {perf['trades']}/{MIN_TRADES}; "
+                f"alpha P&L {perf['alpha_pnl']:+.2%} (worst drawdown {perf['alpha_pnl_max_drawdown']:+.2%}), trades {perf['trades']}/{MIN_TRADES}; "
                 f"holding {', '.join(held) or 'all T-bills'}; judged {JUDGE_ON} or at {MIN_TRADES} trades")
     return msg
