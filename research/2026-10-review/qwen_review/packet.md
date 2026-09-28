@@ -1,0 +1,167 @@
+# Meridian — monthly review packet (as of 2026-09-28)
+
+You are the independent reviewer at a small systematic fund. Review Meridian's bot and strategy as
+you would at a monthly review. Every number below is measured unless marked otherwise. Paper
+account on Alpaca, about $10,000.
+
+## 1. Mandate and owner decisions
+
+- The owner wants Meridian run "like a hedge fund". It now has an operating plan: a **core book**
+  carries the market exposure; **alpha pods** start at zero capital and are funded only after
+  passing a pre-registered test plus shadow trading.
+- Owner decisions (2026-09-27):
+  - **Max drawdown target: −15%.**
+  - Retire the single-stock sleeves.
+  - Accept the pod rules:
+    - pod stop-loss measured on the pod's alpha P&L: −5% → capital halved, −7.5% → back to shadow;
+    - ≥12 months or ≥30 trades of shadow before any capital;
+    - funded pods ramp from ⅓ to ⅔ to full size;
+    - alpha pods ≤30% of fund risk.
+- Still open: the date to switch to the new core (planned ~10/11 review), and whether pods hedge
+  their beta (e.g. an SPY short or an inverse ETF).
+
+## 2. Live structure today (master branch)
+
+Eight strategy sleeves plus cash (weights of account equity):
+
+| Sleeve | Weight | Live pick | Status |
+|---|---:|---|---|
+| long_term_etf | 25% | 126-day MA bond rotation across QQQ/IEF/KMLM | active |
+| momentum | 15% | dual momentum long-only on 15 mega-caps (AAPL MSFT AMZN NVDA GOOGL META JPM XOM LLY UNH AVGO MA V HD PG) | active |
+| mean_reversion | 15% | rsi_exhaustion on SNOW | **retired 9/27** → capital in SGOV |
+| pullback_continuation | 10% | rsi_pullback on WFRD | **retired 9/27** → SGOV |
+| sector_rotation | 10% | relative strength across 11 SPDR sector ETFs | active |
+| breakouts | 7.5% | turtle_ma_exit on TRGP | **retired 9/27** → SGOV |
+| trend_following | 7.5% | 200-day MA trend on XLK | active |
+| volatility | 5% | SVXY held when 20 < VIX < 35 | active |
+| cash reserve | 5% | cash | — |
+
+Execution:
+- Daily session at 15:32 CT, after the close. Market DAY orders, which fill at the next open.
+- Orders are netted per symbol across sleeves. Fractional shares.
+- Resizing a held position is limited to once per calendar month (5% band). Entries and exits
+  go through the day the signal fires.
+- The morning reconcile (08:44 CT) prices pending orders.
+
+## 3. Live record (paper)
+
+- Equity went from $10,000 on 6/25 to $9,997 on 9/25: flat over 3 months.
+  - High $10,149 (8/13), low $9,754 (9/16).
+  - Same window: SPY +5.8%, QQQ +5.4%, the same instruments held at the same weights +9.7%.
+- About 60% invested on 9/25; the idle 40% came from the single-stock sleeves rarely signalling.
+- 204 fills. Realized slippage against the decision-time close averaged −3.9 bps, notional-weighted.
+- Before 9/11, 42% of fills were under $25 (resize noise). There have been none since the monthly
+  resize limit went in on 9/11.
+- **Operational bugs found and fixed 9/27:**
+  - 45 rejected sell orders since July. The books keep 6 decimals and Alpaca keeps 9, so a full
+    exit asked for 1e-9 more shares than held. AVGO's exit failed 11 sessions in a row. Fixed by
+    trimming a sell to the broker's holding when within 1e-6.
+  - The reconciler flagged a false quantity drift: one netted order booked as two ledger rows
+    under the same id. Fixed in the shared reconcile library.
+  - New guard: never sell a symbol the broker holds none of. A buy placed after Friday's close
+    isn't held until Monday; a margin account would accept the sell and open a short.
+
+## 4. Research findings (2026-09-27; total returns, 10 bps per side, long-only)
+
+**4a. Hindsight.**
+- All picks were chosen on 2026-06-28 by 10-year backtest return. The candidate lists included
+  recent winners (TRGP, WFRD, PLTR, RKLB, VRT).
+- The research backtest also booked short signals the long-only live bot never trades. 16 of 52
+  models emit shorts. rsi_exhaustion/SNOW showed +30.7%/yr with shorts and +16.9% long-only.
+  This is now fixed in the engine: long-only by default.
+
+**4b. Honest baseline.** Hindsight picks replaced: momentum on a fixed ETF set (SPY QQQ IWM EFA
+EEM GLD IEF TLT); trend on SPY; single-stock sleeves as T-bills. Period 2011–2026/06:
+
+| Portfolio | CAGR | Vol | Sharpe | Max DD |
+|---|---:|---:|---:|---:|
+| **Honest baseline** | 8.0% | 8.0% | 1.00 | −15.0% |
+| Live picks as run (hindsight) | 14.0% | 10.6% | 1.29 | −16.1% |
+| SPY | 14.0% | 17.1% | 0.86 | −33.7% |
+| 60/40 SPY/IEF | 9.7% | 10.0% | 0.98 | −21.0% |
+
+- Regression of the honest fund on SPY + IEF: beta to SPY 0.34, alpha +1.9%/yr, t = 1.4 (not
+  significant). By period: +0.1%, +0.9%, +2.7%.
+
+**4c. Timing vs holding the same instruments** (CAGR difference by period, 2011–15 / 2016–20 /
+2021–26):
+- sector_rotation: −2.1 / −1.6 / −2.0
+- momentum (honest ETF set): −2.0 / −5.3 / −2.8
+- trend on SPY: −5.1 / −4.3 / −3.6
+- long_term_etf rotation: −3.2 / +0.7 / +12.8 (the gain is almost all 2022)
+- SVXY vix_band after the Feb-2018 product change: +10.4%/yr, Sharpe 0.52, max DD −37.7%. SPY
+  over the same window: +15.0%, 0.82, −33.7%.
+
+**4d. Honest re-selection of the single-stock picks.** Selected on 2011–20 Sharpe, judged on
+2021–26/06:
+- Every honestly selected pick trailed SPY (SPY: +13.5%, Sharpe 0.83). Best Sharpe 0.49.
+- In-sample → out-of-sample Sharpe rank correlation: +0.02 to +0.29.
+- Timing beat simply holding the same symbol in only 10–36% of 531 candidates.
+
+**4e. Meridian's earlier research** also found no cost-surviving edge in cross-sectional mean
+reversion, sector-spread pairs ("KILL"), intraday strategies, or crypto.
+
+## 5. Skill lab (built 2026-09-27)
+
+- How it works:
+  - Plans are JSON files committed to git before they run, checked by sha256 fingerprint.
+  - Development runs never see hold-out prices. The final run opens the hold-out once per plan.
+  - An append-only ledger counts every trial for a deflated Sharpe.
+  - Skill = Newey-West alpha over the benchmark named in the plan.
+  - Each report states the minimum detectable information ratio.
+- **Test 1: Faber's 10-month SMA rule** (published May 2006 / Spring 2007) on SPY EFA IEF GSG VNQ,
+  2007-05 to 2026-09, one config:
+  - Alpha over holding the same five ETFs equal-weight: +2.07%/yr, t = 1.68 (needed 2.0) → **not
+    passed**.
+  - Alpha over SPY + IEF: +1.01%, t = 0.76.
+  - CAGR 5.2% vs 5.7% held; max DD −15.0% vs −48.6%; Sharpe 0.66 vs 0.45 (60/40: 0.77 / −31%).
+  - Pre-committed consequence: shadow sleeve from 2026-10-01, judged 2027-09-30 (built: logs
+    month-end decisions, no orders).
+- **Test 2: structure (non-inferiority).** Can a simple core replace the 8 sleeves? The rule: in
+  each of 2011–15, 2016–20 and 2021–26, Sharpe no more than 0.05 below the baseline and max DD no
+  more than 2 points worse. Winner: **C1 = 50% 60/40 SPY/IEF + 25% long_term_etf rotation + 25%
+  T-bills**. 2011–26/06: 9.1%/yr, Sharpe 1.13, max DD −15.2% (baseline 8.0 / 1.00 / −15.0).
+  History was already seen, so this is a structure choice, not a skill claim.
+
+## 6. Return at a fixed drawdown budget (2008 included)
+
+The earlier studies started in 2010/11 and missed 2008. Each portfolio below is scaled with
+T-bills or margin (margin at T-bill + 1.5%, an assumed rate) so its worst 2008–2026/06 drawdown
+equals the budget:
+
+| Portfolio | At −15% | At −20% | At −25% | At −30% |
+|---|---:|---:|---:|---:|
+| C1 core | 6.5% (78% invested) | 8.1% | 9.4% (margin) | 10.6% (margin) |
+| Faber on SPY | 5.9% | 7.2% | 8.4% | 9.4% |
+| QQQ | 5.6% | 7.0% | 8.4% | 9.9% |
+| 60/40 | 4.8% | 5.9% | 7.1% | 8.3% |
+
+C1's unscaled drawdown including 2008 is −19%. The owner kept −15%, so the core runs at 78%
+invested.
+
+## 7. The C1 switch (built on a branch, NOT live, planned for the ~10/11 review)
+
+- Weights: SPY 23.4%, IEF 15.6%, long_term_etf 19.5%, SGOV 41.5%.
+- Momentum, sector rotation, trend and SVXY retired. Their holdings are sold on switch day.
+- Switch-day fix: an allocation change forces a same-day resize.
+- A total-return tracker logs the dividends, coupons and T-bill yield that paper doesn't pay. It
+  is the fair measure of C1, which is about three-quarters bonds, dividend ETFs and T-bills.
+- Read-only switch preview from the real account: it lands exactly on the C1 weights and sells
+  AAPL, MSFT, META, UNH, AVGO, XLE, XLF, XLV and XLK.
+- Known limits:
+  - CORE_EXPOSURE 0.78 was fitted on the same 2008–2026 history it is judged on.
+  - Live rebalancing is monthly with a 5% band; the backtest held weights daily.
+  - Paper pays no income.
+
+## 8. Context and constraints
+
+- The owner's other bots: SeykotaBot (trend-following stocks, about $1k) and MeansRev (mean
+  reversion on ETFs, about $105k paper). The owner's income goal ($1,000/month) and $300/month
+  contributions apply to SeykotaBot, not Meridian.
+- Real-fund comparison (secondary sources, reported):
+  - Millennium pods: −5% halves capital, −7.5% closes the pod.
+  - Multi-manager beta to the S&P is about 0.03; hedge funds broadly about 0.24.
+  - Bridgewater splits beta/alpha roughly 70/30.
+  - Multi-managers pass through up to about 8%/yr in costs.
+- Pipeline for alpha pods: Faber trend in shadow; post-earnings drift on large caps is the next
+  candidate (not yet written as a plan).
