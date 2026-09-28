@@ -64,3 +64,28 @@ def test_corrupt_file_is_treated_as_never_recorded(tmp_path):
     path.write_text("not valid json", encoding="utf-8")
     assert load_last_rebalance(path) == {}
     assert is_rebalance_due("momentum", "AAPL", date(2026, 9, 15), path=path)
+
+
+def test_an_allocation_change_makes_a_resize_due_again_the_same_month(tmp_path):
+    """Switching to the C1 core mid-month resizes held positions that day."""
+    from datetime import date as _d
+
+    from meridian.execution.rebalance_schedule import is_rebalance_due, record_rebalance
+
+    p = tmp_path / "s.json"
+    day = _d(2026, 10, 12)
+    record_rebalance("long_term_etf", "QQQ", _d(2026, 10, 1), path=p, weight=0.25)
+    assert not is_rebalance_due("long_term_etf", "QQQ", day, path=p, weight=0.25)
+    assert is_rebalance_due("long_term_etf", "QQQ", day, path=p, weight=0.195)
+
+
+def test_a_legacy_date_only_stamp_is_due_once_a_weight_is_known(tmp_path):
+    import json
+    from datetime import date as _d
+
+    from meridian.execution.rebalance_schedule import is_rebalance_due
+
+    p = tmp_path / "s.json"
+    p.write_text(json.dumps({"long_term_etf/QQQ": "2026-10-01"}))
+    assert not is_rebalance_due("long_term_etf", "QQQ", _d(2026, 10, 12), path=p)
+    assert is_rebalance_due("long_term_etf", "QQQ", _d(2026, 10, 12), path=p, weight=0.195)

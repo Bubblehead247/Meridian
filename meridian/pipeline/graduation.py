@@ -17,7 +17,11 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from meridian.portfolio.allocation import FAMILY_TO_SLEEVE, SLEEVE_ALLOCATIONS
+from meridian.portfolio.allocation import (
+    FAMILY_TO_SLEEVE,
+    RESEARCH_SLEEVE_ALLOCATIONS,
+    SLEEVE_ALLOCATIONS,
+)
 from meridian.portfolio.ledger import STAGES, StrategyLedger
 
 #: Live-capital range (fraction of equity) per stage — policy table (PLAN.md §6).
@@ -135,7 +139,8 @@ def criteria_for_family(
 #: Kept for backward-compatible imports; prefer ``criteria_for_family`` in new code,
 #: since this snapshot does not reflect a config edited after import time.
 FAMILY_CRITERIA: dict[str, GraduationCriteria] = {
-    family: criteria_for_family(family) for family in SLEEVE_ALLOCATIONS
+    family: criteria_for_family(family)
+    for family in dict.fromkeys([*SLEEVE_ALLOCATIONS, *RESEARCH_SLEEVE_ALLOCATIONS])
 }
 
 

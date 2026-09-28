@@ -368,11 +368,11 @@ def run_paper_session(
                 # subject to the noise band within that month.
                 if current != 0.0 and target != 0.0:
                     if not rebalance_schedule.is_rebalance_due(
-                        family, sym, today, path=rebalance_schedule_path
+                        family, sym, today, path=rebalance_schedule_path, weight=weight
                     ):
                         continue
                     rebalance_schedule.record_rebalance(
-                        family, sym, today, path=rebalance_schedule_path
+                        family, sym, today, path=rebalance_schedule_path, weight=weight
                     )
                     if abs(delta) < REBALANCE_BAND_PCT * abs(target):
                         print(f"  hold: {family} {sym} {delta:+.4f} sh is inside "

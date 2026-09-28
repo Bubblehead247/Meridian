@@ -588,6 +588,11 @@ def _run_paper(args) -> int:
             print(run_dualmom_shadow())
         except Exception as exc:  # noqa: BLE001
             print(f"Dual momentum shadow skipped: {exc}", file=sys.stderr)
+        try:
+            from meridian.execution.total_return import run_total_return
+            print(run_total_return(equity))
+        except Exception as exc:  # noqa: BLE001
+            print(f"Total-return tracker skipped: {exc}", file=sys.stderr)
     return 0
 
 
