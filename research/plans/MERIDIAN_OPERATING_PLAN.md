@@ -116,6 +116,8 @@ Sources: [Pod shop risk limits](https://hedgefundinterview.com/pod-shop-risk-lim
   32.5% sits in SGOV. SVXY stays for now.
 - **Amended pod rules accepted** (§5): stops on alpha P&L at −5% (halve) and −7.5% (back to
   shadow); 12 months or 30 trades of shadow before capital; ramp ⅓ → ⅔ → full.
+- **−15% confirmed after the 2008 correction** (returns study step 4): the core is C1 scaled to
+  about 78% invested (rest in T-bills), expected about 6.5%/yr through a 2008-type crisis.
 - Still open: switch timing for the core book, and whether pods hedge their beta.
 
 ## 7. Original decision list
