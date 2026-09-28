@@ -583,6 +583,11 @@ def _run_paper(args) -> int:
             print(run_shadow())
         except Exception as exc:  # noqa: BLE001
             print(f"Faber shadow skipped: {exc}", file=sys.stderr)
+        try:
+            from meridian.execution.shadow_dualmom import run_shadow as run_dualmom_shadow
+            print(run_dualmom_shadow())
+        except Exception as exc:  # noqa: BLE001
+            print(f"Dual momentum shadow skipped: {exc}", file=sys.stderr)
     return 0
 
 

@@ -1,0 +1,5 @@
+GATE shadow target function over history: CAGR +10.98%, max DD -14.65% (sweep +10.98%, -14.6%) -> PASS
+window 2008-01-01..2026-06-26 (18.5 years); detectable IR at t=2: 0.47
+alpha over EW hold of the same 8: +5.60%/yr, NW t +2.79, beta 0.54, IR +0.57
+pod +11.0% / -14.6%; EW hold of the same 8: +8.6% / -34.8%
+CONTAMINATED: parameters were the best of 96 on this data; not a funding gate.
