@@ -133,6 +133,14 @@ Sources: [Pod shop risk limits](https://hedgefundinterview.com/pod-shop-risk-lim
   build. The in-sample best, dual momentum 6-month top 4 of 8 (11.0% / −14.6%, passed the
   unseen-crash test), is a pod candidate, not a core: it needs an engine change, hindsight is in U8,
   and PBO is 0.52. C1 is superseded. No universe expansion among ETFs.
+- **2026-09-28 built (owner: "Do 1,2,3"):**
+  1. Trend 6 core on branch `trend6-core-2026-10` (worktree `C:/Users/Cody/Claude/Meridian-trend6`), pushed,
+     **not merged**. The live models reproduce the sweep exactly (7.02% / −9.64%). Review doc:
+     `research/plans/TREND6_SWITCH.md` on that branch. Plan on about 5–7%/yr (U8 hindsight).
+  2. Dual momentum pod: plans `pod_dualmom_hist.json` (contaminated; alpha +5.6%/yr, t 2.79, not a
+     gate) and `pod_dualmom_forward.json`. The shadow is live on master from the 9/30 close. Judged at
+     12 months or 30 trades, whichever is later.
+  3. C1 retired: tag `archive/c1-core-2026-10`, branch deleted.
 - Still open: switch timing for the core book, and whether pods hedge their beta.
 
 ## 7. Original decision list
