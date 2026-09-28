@@ -1,4 +1,4 @@
-"""Preview the orders the C1 switch would send, from the account's real holdings.
+"""Preview the orders the core switch (trend 6) would send, from the account's real holdings.
 
 Read-only and offline to the broker:
   * holdings and equity are READ from Meridian's Alpaca paper account;
@@ -8,7 +8,7 @@ Read-only and offline to the broker:
   * orders go to SimulatedBroker (fills at the last close, no cost) — nothing
     is sent to Alpaca; notifications are off (no NTFY_TOPIC).
 
-    python research/plans/c1_switch_preview.py   (from the C1 worktree)
+    python research/plans/core_switch_preview.py   (from the trend 6 worktree)
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def main() -> int:
     mark = {p.symbol: float(p.current_price) for p in broker_pos}
     equity = float(acct.equity)
 
-    tmp = Path(tempfile.mkdtemp(prefix="c1_preview_"))
+    tmp = Path(tempfile.mkdtemp(prefix="core_preview_"))
     (tmp / "ledger").mkdir()
     for name in ("positions.json", "last_rebalance.json"):
         if (LIVE / "ledger" / name).exists():
@@ -66,7 +66,7 @@ def main() -> int:
         rebalance_schedule_path=tmp / "ledger" / "last_rebalance.json",
     )
 
-    print(f"\nC1 switch preview as of {date.today()} - account equity ${equity:,.2f} "
+    print(f"\nCore (trend 6) switch preview as of {date.today()} - account equity ${equity:,.2f} "
           f"(read-only; simulated fills; books copied to {tmp})\n")
     print("| Symbol | Order (shares) | ~$ | Held before | Held after |")
     print("|---|---:|---:|---:|---:|")

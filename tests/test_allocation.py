@@ -1,4 +1,4 @@
-"""Tests for the live allocation (the C1 core book) and the research 9-sleeve table."""
+"""Tests for the live allocation (the trend 6 core) and the research 9-sleeve table."""
 
 from __future__ import annotations
 
@@ -13,27 +13,20 @@ from meridian.portfolio import (
     rebalance_targets,
     seed_ledgers,
 )
-from meridian.portfolio.allocation import CORE_EXPOSURE, RESEARCH_SLEEVE_ALLOCATIONS
-
-LIVE = {"core_equity", "core_bonds", "long_term_etf", "core_tbills"}
+from meridian.portfolio.allocation import RESEARCH_SLEEVE_ALLOCATIONS, TREND6_SLEEVES
 
 
-def test_live_table_is_the_c1_core_at_the_drawdown_exposure():
+def test_live_table_is_trend6_eight_sleeves_at_an_eighth_each():
     funded = {k: v for k, v in SLEEVE_ALLOCATIONS.items() if v > 0}
-    assert set(funded) == LIVE
+    assert set(funded) == set(TREND6_SLEEVES) and len(funded) == 8
+    assert all(v == pytest.approx(0.125) for v in funded.values())
     assert math.isclose(sum(SLEEVE_ALLOCATIONS.values()), 1.0)
-    # 50% 60/40 + 25% long-term ETF + 25% T-bills, scaled; the rest in T-bills.
-    assert funded["core_equity"] == pytest.approx(CORE_EXPOSURE * 0.30)
-    assert funded["core_bonds"] == pytest.approx(CORE_EXPOSURE * 0.20)
-    assert funded["long_term_etf"] == pytest.approx(CORE_EXPOSURE * 0.25)
-    assert funded["core_tbills"] == pytest.approx(1 - CORE_EXPOSURE * 0.75)
 
 
 def test_retired_sleeves_stay_listed_at_zero_so_their_accounting_continues():
     for sleeve in RESEARCH_SLEEVE_ALLOCATIONS:
         assert sleeve in SLEEVE_ALLOCATIONS
-    assert SLEEVE_ALLOCATIONS["mean_reversion"] == 0.0
-    assert SLEEVE_ALLOCATIONS["momentum"] == 0.0
+        assert SLEEVE_ALLOCATIONS[sleeve] == 0.0
 
 
 def test_research_table_keeps_the_original_nine_sleeves():
@@ -48,7 +41,7 @@ def test_research_table_keeps_the_original_nine_sleeves():
 def test_seed_ledgers_splits_equity_by_the_live_table():
     leds = seed_ledgers(100_000.0)
     by_name = {x.name: x for x in leds}
-    assert by_name["core_tbills"].capital_alloc == pytest.approx(41_500.0)
+    assert by_name["core_trend_tlt"].capital_alloc == pytest.approx(12_500.0)
     assert all(x.stage == "research" for x in leds)
     assert math.isclose(sum(x.capital_alloc for x in leds), 100_000.0)
 

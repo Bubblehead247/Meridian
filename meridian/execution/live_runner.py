@@ -70,7 +70,11 @@ REBALANCE_BAND_PCT = 0.05
 #: 14.0%/yr with drawdown unchanged; ~+1%/yr at a 4% T-bill rate
 #: (research/2026-09-strategy-review, option B). SGOV's return is its monthly
 #: dividend — Alpaca paper pays none, so on paper this shows roughly 0.
-IDLE_SWEEP_FAMILIES = frozenset({"breakouts", "mean_reversion", "pullback_continuation"})
+#: The trend 6 core sleeves do the same: a flat sleeve's 12.5% sits in T-bills, as
+#: in the sweep that selected it (research/plans/full_sweep_2026_10.json).
+IDLE_SWEEP_FAMILIES = frozenset({"breakouts", "mean_reversion", "pullback_continuation",
+                                 *(f"core_trend_{etf}" for etf in
+                                   ("spy", "qqq", "iwm", "efa", "eem", "gld", "ief", "tlt"))})
 SWEEP_SYMBOL = "SGOV"
 
 # The 11 SPDR sector ETFs — what "SECTORS" expands to at execution time
@@ -128,8 +132,9 @@ def _expand_symbol(symbol_str: str) -> list[str]:
     return symbol_str.split("_")
 
 
-def _fetch_prices(symbols: list[str], start: str = "2023-01-01") -> dict[str, pd.Series]:
-    """Load closing prices for each symbol from ``start`` to today.
+def _fetch_prices(symbols: list[str], start: str = "2023-01-01",
+                  field: str = "close") -> dict[str, pd.Series]:
+    """Load closing prices (or ``field``, e.g. ``adj_close``) for each symbol from ``start`` to today.
 
     Bypasses the on-disk cache (``use_cache=False``): the live path must
     always see today's bar, and must never read stale data left behind by a
@@ -139,7 +144,7 @@ def _fetch_prices(symbols: list[str], start: str = "2023-01-01") -> dict[str, pd
     out = {}
     for sym in symbols:
         try:
-            out[sym] = load_ohlcv(sym, start, use_cache=False)["close"]
+            out[sym] = load_ohlcv(sym, start, use_cache=False)[field]
         except Exception:
             pass
     return out
@@ -291,7 +296,14 @@ def run_paper_session(
                 continue
 
             try:
-                sigs = _today_signals(model, prices)
+                # A model can ask for its signal on dividend-adjusted prices (trend 6
+                # does, as tested); sizing below always uses the real close.
+                field = getattr(model, "signal_price_field", "close")
+                sig_prices = prices if field == "close" else _fetch_prices(
+                    symbols, start=price_start, field=field)
+                if any(s not in sig_prices or sig_prices[s].empty for s in symbols):
+                    raise ValueError(f"no {field} prices for {symbols}")
+                sigs = _today_signals(model, sig_prices)
             except Exception as exc:
                 _skip(f"signal error: {exc}")
                 continue
@@ -483,7 +495,7 @@ def print_session_report(decisions: list[StrategyDecision]) -> None:
 
     for family in sorted(by_family):
         pct = SLEEVE_ALLOCATIONS.get(family, 0.0)
-        print(f"\n  [{family}]  {pct:.0%} sleeve")
+        print(f"\n  [{family}]  {pct:.1%} sleeve")
         for d in by_family[family]:
             n_long = sum(1 for v in d.signals.values() if v > 0)
             n_flat = sum(1 for v in d.signals.values() if v == 0)

@@ -5,21 +5,43 @@
     "retired": true,
     "retired_note": "Retired to research 2026-09-27 by the owner: no honest edge (research/2026-09-strategy-review \u00a76). Capital held in SGOV."
   },
-  "core_bonds": {
-    "model": "buy_and_hold",
+  "core_trend_eem": {
+    "model": "sma6_monthly",
+    "symbol": "EEM"
+  },
+  "core_trend_efa": {
+    "model": "sma6_monthly",
+    "symbol": "EFA"
+  },
+  "core_trend_gld": {
+    "model": "sma6_monthly",
+    "symbol": "GLD"
+  },
+  "core_trend_ief": {
+    "model": "sma6_monthly",
     "symbol": "IEF"
   },
-  "core_equity": {
-    "model": "buy_and_hold",
+  "core_trend_iwm": {
+    "model": "sma6_monthly",
+    "symbol": "IWM"
+  },
+  "core_trend_qqq": {
+    "model": "sma6_monthly",
+    "symbol": "QQQ"
+  },
+  "core_trend_spy": {
+    "model": "sma6_monthly",
     "symbol": "SPY"
   },
-  "core_tbills": {
-    "model": "buy_and_hold",
-    "symbol": "SGOV"
+  "core_trend_tlt": {
+    "model": "sma6_monthly",
+    "symbol": "TLT"
   },
   "long_term_etf": {
     "model": "ma_bond_rotation_cs_b126",
-    "symbol": "QQQ_IEF_KMLM"
+    "symbol": "QQQ_IEF_KMLM",
+    "retired": true,
+    "retired_note": "Retired to research at the trend 6 switch (research/2026-10-sweep/README.md): the full sweep recommended TREND6-EW-U8 as the core. Kept listed so any holding is sold."
   },
   "mean_reversion": {
     "model": "rsi_exhaustion",

@@ -63,9 +63,8 @@ PERMISSIONS: dict[str, PermissionRule] = {
     "mean_reversion": _mean_reversion,
     "sector_rotation": _always,
     "long_term_etf": _always,
-    "core_equity": _always,      # the core book is held, never regime-gated
-    "core_bonds": _always,
-    "core_tbills": _always,
+    # Trend 6 core sleeves: never regime-gated (their own rule is the gate).
+    **{f"core_trend_{etf}": _always for etf in ("spy", "qqq", "iwm", "efa", "eem", "gld", "ief", "tlt")},
     "cash_reserve": _always,
     "event_driven": _deferred,
     "volatility": _deferred,

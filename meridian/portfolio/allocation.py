@@ -3,7 +3,7 @@
 This module owns target sleeve weights and ledger initialization at first run;
 it does NOT own risk limits or suspension logic (those stay in portfolio/risk_budget.py).
 
-The live allocation (``SLEEVE_ALLOCATIONS``, the C1 core book) is the split of account equity. At
+The live allocation (``SLEEVE_ALLOCATIONS``, the trend 6 core) is the split of account equity. At
 first run it seeds one ``StrategyLedger`` per sleeve with ``capital_alloc = pct × equity``;
 on later runs seeding is idempotent (existing ledgers, with their accumulated state, are
 left untouched).
@@ -35,21 +35,16 @@ RESEARCH_SLEEVE_ALLOCATIONS: dict[str, float] = {
     "experimental_research": 0.05,
 }
 
-#: How much of the C1 core is invested; the rest of the account sits in T-bills.
-#: 0.78 put C1's worst drawdown at the owner's -15% target over 2008-2026/06
-#: (research/2026-09-returns-study step 4). Fitted on the same history it was
-#: judged on, so revisit it at each review rather than treat it as precise.
-CORE_EXPOSURE = 0.78
+#: Live allocation by sleeve (sums to 1.0): the trend 6 core (TREND6-EW-U8), recommended
+#: by the pre-registered full sweep (research/plans/full_sweep_2026_10.json): eight
+#: asset-class ETF sleeves at 12.5% each, each held while above its 6-month average,
+#: otherwise in T-bills via the idle-cash sweep. 2008-2026/06: 7.0%/yr, max DD -9.6%
+#: (inside the owner's -15%). Retired sleeves stay listed at 0 so their accounting continues.
+TREND6_SLEEVES = tuple(f"core_trend_{etf}" for etf in ("spy", "qqq", "iwm", "efa", "eem", "gld", "ief", "tlt"))
 
-#: Live allocation by sleeve (sums to 1.0): the C1 core book chosen by the
-#: pre-registered structure test (research/plans/meridian_structure_2026_10.json),
-#: 50% 60/40 SPY/IEF + 25% long-term ETF rotation + 25% T-bills, scaled to
-#: CORE_EXPOSURE. Retired sleeves stay listed at 0 so their accounting continues.
 SLEEVE_ALLOCATIONS: dict[str, float] = {
-    "core_equity": round(CORE_EXPOSURE * 0.50 * 0.60, 6),   # SPY   0.234
-    "core_bonds": round(CORE_EXPOSURE * 0.50 * 0.40, 6),    # IEF   0.156
-    "long_term_etf": round(CORE_EXPOSURE * 0.25, 6),        # QQQ/IEF/KMLM rotation 0.195
-    "core_tbills": round(1 - CORE_EXPOSURE * 0.75, 6),      # SGOV  0.415
+    **{sleeve: 0.125 for sleeve in TREND6_SLEEVES},
+    "long_term_etf": 0.0,
     "momentum": 0.0,
     "trend_following": 0.0,
     "breakouts": 0.0,

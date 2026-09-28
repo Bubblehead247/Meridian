@@ -261,7 +261,7 @@ def show_all_family_charts(
             label += " - RETIRED, cash"
         title = (
             f"{family.upper()}  [{label}]  "
-            f"{weight:.0%} sleeve  ($10k -> {_fmt_dollar(final)})"
+            f"{weight:.1%} sleeve  ($10k -> {_fmt_dollar(final)})"
         )
         _print_chart(eq, title=title, equity=equity, height=_MINI_HEIGHT)
 

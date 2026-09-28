@@ -78,7 +78,7 @@ def _patch_session(monkeypatch, picks):
     """Stub picks, price fetch, and model registry for an offline session."""
     monkeypatch.setattr(live_runner, "load_live_picks", lambda: picks)
 
-    def fake_fetch(symbols, start="2023-01-01"):
+    def fake_fetch(symbols, start="2023-01-01", field="close"):
         idx = pd.RangeIndex(300)
         return {s: pd.Series(100.0, index=idx) for s in symbols}
 

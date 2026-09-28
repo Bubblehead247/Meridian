@@ -76,7 +76,7 @@ def test_permission_matrix_covers_all_families():
         "trend_following", "momentum", "breakouts", "pullback_continuation",
         "mean_reversion", "sector_rotation", "long_term_etf", "cash_reserve",
         "event_driven", "volatility",
-        "core_equity", "core_bonds", "core_tbills",
+        *(f"core_trend_{e}" for e in ("spy", "qqq", "iwm", "efa", "eem", "gld", "ief", "tlt")),
     }
 
 
