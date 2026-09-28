@@ -574,6 +574,15 @@ def _run_paper(args) -> int:
     orders = sum(len(d.orders) for d in decisions)
     verb = "previewed" if args.dry_run else "sent"
     print(f"Done: {active} strategies processed, {orders} orders {verb}.")
+
+    # Shadow pods: logged decisions, no orders. After the real session, and
+    # isolated so a shadow failure can never touch it.
+    if not args.dry_run:
+        try:
+            from meridian.execution.shadow_faber import run_shadow
+            print(run_shadow())
+        except Exception as exc:  # noqa: BLE001
+            print(f"Faber shadow skipped: {exc}", file=sys.stderr)
     return 0
 
 
