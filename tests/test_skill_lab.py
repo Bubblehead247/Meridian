@@ -110,3 +110,13 @@ def test_alpha_test_recovers_a_known_alpha():
 
 def test_minimum_detectable_ir():
     assert lab.mde_information_ratio(16) == pytest.approx(0.5)
+
+
+def test_a_plan_without_an_alpha_bar_leaves_the_verdict_to_its_own_rule(tmp_path):
+    plan = lab.Plan(tmp_path / "p.json", _plan_data(pass_rule={"type": "non-inferiority",
+                                                               "t_alpha_min": None}), "fp")
+    rf = pd.Series(0.0, index=_prices()["A"].index)
+    rep = lab.run(plan, _prices(), lambda p, c: p["A"].pct_change().fillna(0),
+                  lambda p: {"A": p["A"].pct_change().fillna(0) * 0.5}, rf,
+                  final=True, ledger=tmp_path / "l.jsonl")
+    assert rep["passed"] is None

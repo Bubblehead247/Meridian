@@ -187,15 +187,19 @@ def run(plan: Plan, prices: dict[str, pd.Series],
     dsr = deflated_sharpe_ratio(best["returns"].to_numpy(), trial_sharpes=per_period_sr,
                                 n_trials=n_trials) if len(configs) > 1 else None
     years = len(best["returns"]) / 252
-    t_needed = float(plan.data["pass_rule"].get("t_alpha_min", 2.0))
+    # A plan with t_alpha_min = null (e.g. a non-inferiority test) makes no alpha
+    # claim: the lab still logs and reports, and the caller applies the plan's rule.
+    t_raw = plan.data["pass_rule"].get("t_alpha_min", 2.0)
+    t_needed = float(t_raw) if t_raw is not None else 2.0
     report = {
         "plan": plan.id, "fingerprint": plan.fingerprint, "final": final,
         "window": [str(start.date()), str(end.date())], "years": years,
         "mde_information_ratio": mde_information_ratio(years, t_needed),
         "n_trials_total": n_trials, "results": results, "best": best,
         "deflated_sharpe": dsr,
-        "passed": best["alpha"]["alpha"] > 0 and best["alpha"]["t_alpha"] >= t_needed
-                  and (dsr is None or dsr["dsr_pvalue"] >= 0.95),
+        "passed": None if t_raw is None else (
+            best["alpha"]["alpha"] > 0 and best["alpha"]["t_alpha"] >= t_needed
+            and (dsr is None or dsr["dsr_pvalue"] >= 0.95)),
     }
     _log(plan, "final" if final else "dev", len(configs), ledger,
          {"passed": report["passed"], "t_alpha": best["alpha"]["t_alpha"],
