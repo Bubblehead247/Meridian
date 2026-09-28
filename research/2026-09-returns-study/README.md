@@ -81,3 +81,23 @@ This was added **after** seeing the table above, so it is weaker evidence.
    user's call.
 4. Paper caveat: T-bill and dividend income shows about 0 on Alpaca paper, which pays no
    dividends. Equity-exposure levers do show on paper.
+
+## 5. Return at a fixed drawdown budget, 2008 included (step4_return_at_budget)
+
+Every earlier table in this study starts in 2010/2011 and so **misses 2008**. Here each portfolio
+is scaled with T-bills (k < 1) or margin (k > 1; borrowing at T-bill + 1.5%, an assumed rate) so
+that its worst drawdown from 2008-01 to 2026-06 hits the budget. k is calibrated on the same
+history, so compare rows with each other, not with a promise.
+
+| Portfolio | At −15% | At −20% | At −25% | At −30% |
+|---|---:|---:|---:|---:|
+| **C1 core (baseline for the switch)** | +6.5% (k 0.78) | +8.1% (k 1.05) | +9.4% (k 1.32) | +10.6% (k 1.60) |
+| Faber on SPY alone | +5.9% | +7.2% | +8.4% | +9.4% |
+| QQQ | +5.6% | +7.0% | +8.4% | +9.9% |
+| 60/40 SPY/IEF | +4.8% | +5.9% | +7.1% | +8.3% |
+
+C1 unscaled had a −19.0% drawdown with 2008 included (it was −15.2% from 2011). **At a true −15%
+through a 2008-type crisis, the C1 core is about 78% invested, with the rest in T-bills, and the
+expected return is about 6.5%/yr.** C1 still gives the most return per unit of drawdown of the
+standard portfolios tested. Each extra 5 points of drawdown adds about 1.3–1.6%/yr. Beyond
+about −20%, C1 needs margin (k > 1).
