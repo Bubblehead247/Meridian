@@ -127,6 +127,12 @@ Sources: [Pod shop risk limits](https://hedgefundinterview.com/pod-shop-risk-lim
   60/40's 2008 drawdown (−30.8%) is what forced C1 down to 78% invested. Pre-register the honest
   8-sleeve fund with sector rotation and SVXY retired to T-bills, against the full honest fund,
   both at a matched −15% drawdown over 2008–2026. Claude's review: `research/2026-10-review/claude_review/`.
+- **2026-09-28 full sweep** (`research/2026-10-sweep/README.md`, 96 pre-registered candidates):
+  recommended core **TREND6-EW-U8**: 8 ETFs (SPY QQQ IWM EFA EEM GLD IEF TLT) at 12.5% each, each
+  held while above its 6-month average, otherwise T-bills. 7.0%/yr, max DD −9.6% (2008–26); small
+  build. The in-sample best, dual momentum 6-month top 4 of 8 (11.0% / −14.6%, passed the
+  unseen-crash test), is a pod candidate, not a core: it needs an engine change, hindsight is in U8,
+  and PBO is 0.52. C1 is superseded. No universe expansion among ETFs.
 - Still open: switch timing for the core book, and whether pods hedge their beta.
 
 ## 7. Original decision list

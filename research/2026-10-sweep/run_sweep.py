@@ -235,8 +235,8 @@ def main() -> int:
     show(full.head(15), "Full sample 2008-01..2026-06, top 15 by return at -15% (IN-SAMPLE)")
     fixed = ["BASELINE8", "TRIMMED", "C1", "C3", "SIXTY40", "ALLWEATHER", "SPY", "PAA-U12", "TREND10-EW-U5"]
     show(full.loc[fixed], "Reference rows (same window)")
-    print(f"\nBest deployable (live-ready/small-build): {full.loc[deployable].obj.idxmax()} "
-          f"{full.loc[deployable].obj.max():+.2%}; best overall: {full.obj.idxmax()} {full.obj.max():+.2%}")
+    print(f"\nBest deployable (live-ready/small-build): {full.loc[deployable]["obj"].idxmax()} "
+          f"{full.loc[deployable]["obj"].max():+.2%}; best overall: {full["obj"].idxmax()} {full["obj"].max():+.2%}")
 
     # ---------------------------------------------------------------- forward walk-forward
     wf_rows, stitched = [], {"WF-all": [], "WF-deployable": [], "BASELINE8": [], "C1": [], "SIXTY40": []}
@@ -265,6 +265,16 @@ def main() -> int:
         wf_stats[key] = (cagr(s), maxdd(s), sharpe(s))
         lab_ = f"**{key}**" if key == "BASELINE8" else key
         print(f"| {lab_} | {cagr(s):+.1%} | {maxdd(s):+.1%} | {sharpe(s):.2f} |")
+    # Diagnostic (added after the first, crashed run; changes no rule): where each track's worst drawdown was.
+    for key, pieces in stitched.items():
+        s = pd.concat(pieces)
+        eq = (1 + s).cumprod()
+        dd = eq / eq.cummax() - 1
+        trough = dd.idxmin()
+        peak = eq.loc[:trough].idxmax()
+        held = wf.set_index("year").loc[trough.year, "pick_all" if key == "WF-all" else "pick_deployable"] \
+            if key.startswith("WF") else key
+        print(f"  worst drawdown {key}: {dd.min():+.1%} from {peak.date()} to {trough.date()} (holding {held})")
 
     # ---------------------------------------------------------------- reverse crash test
     ta, tb_ = "2011-01-01", B
@@ -295,6 +305,15 @@ def main() -> int:
           "(0.5 = selection no better than chance; general gauge, not the drawdown-capped objective)")
     print(f"Sharpe-best candidate {best_sr} (Sharpe {sharpe(s_full[best_sr]):.2f}): deflated-Sharpe probability "
           f"{dsr96['dsr_pvalue']:.2f} with n=96, {dsr809['dsr_pvalue']:.2f} with n=809 (>= 0.95 = significant)")
+    # Diagnostic (added after the first, crashed run; changes no rule): the same test on returns in
+    # excess of T-bills. Raw returns mostly test "the portfolio went up", which any long-biased fund passes.
+    t_full = tb.loc[A:B]
+    per_sr_x = [float((s_full[i] - t_full).mean() / (s_full[i] - t_full).std()) for i in ids]
+    best_x = max(ids, key=lambda i: sharpe(s_full[i] - t_full))
+    dx96 = deflated_sharpe_ratio((s_full[best_x] - t_full).to_numpy(), trial_sharpes=per_sr_x, n_trials=96)
+    dx809 = deflated_sharpe_ratio((s_full[best_x] - t_full).to_numpy(), trial_sharpes=per_sr_x, n_trials=809)
+    print(f"Excess-of-T-bills: best {best_x} (Sharpe {sharpe(s_full[best_x] - t_full):.2f}): deflated-Sharpe "
+          f"probability {dx96['dsr_pvalue']:.2f} with n=96, {dx809['dsr_pvalue']:.2f} with n=809")
 
     # ---------------------------------------------------------------- universe
     print("\n### Universe: same family and parameters, full-sample return at -15%\n| Comparison | Pairs | First wins | Median difference |\n|---|---:|---:|---:|")
@@ -309,7 +328,7 @@ def main() -> int:
         d = np.array(diffs)
         uni_share[(a_, b_)] = (d > 0).mean()
         print(f"| {a_} vs {b_} | {len(d)} | {(d > 0).mean():.0%} | {np.median(d):+.2%} |")
-    fam_best = full.groupby("family").obj.max().sort_values(ascending=False)
+    fam_best = full.groupby("family")["obj"].max().sort_values(ascending=False)
     print("\nBest per family (full sample, at -15%): " + ", ".join(f"{f} {v:+.1%}" for f, v in fam_best.items()))
 
     # ---------------------------------------------------------------- decision rules
@@ -317,7 +336,7 @@ def main() -> int:
     n_assets = {i: (len(U[uni[i]]) if uni[i] else {"SIXTY40": 2, "SPY": 1, "ALLWEATHER": 5, "C1": 3,
                                                         "TRIMMED": 6, "BASELINE8": 8, "C3": 8}.get(i, 14)) for i in ids}
     recent = Counter(wf[wf.year >= 2022].pick_deployable)
-    best_dep = full.loc[deployable].obj.max()
+    best_dep = full.loc[deployable]["obj"].max()
     near = [i for i in deployable if full.loc[i, "obj"] >= best_dep - 0.005]
     near.sort(key=lambda i: (simp_class[fam[i]], n_assets[i], -recent.get(i, 0)))
     rec = near[0]
@@ -332,16 +351,17 @@ def main() -> int:
     print(f"RECOMMENDATION: {rec} (tag {tag[rec]}, {full.loc[rec, 'obj']:+.2%}/yr at -15% in-sample); "
           f"reverse-crash DD with k fitted on 2011-26 = {rec_crash:+.1%}"
           + ("  FLAG: deeper than -20%" if rec_crash < -0.20 else ""))
-    print(f"Overall best (any tag): {full.obj.idxmax()} ({tag[full.obj.idxmax()]}) {full.obj.max():+.2%}")
+    print(f"Overall best (any tag): {full["obj"].idxmax()} ({tag[full["obj"].idxmax()]}) {full["obj"].max():+.2%}")
     print(f"SELECTION ADDS VALUE: {'YES' if adds_value else 'NO'} (WF-all {wf_all[0]:+.2%}/{wf_all[1]:+.1%} vs "
           f"BASELINE8 {wf_b[0]:+.2%}/{wf_b[1]:+.1%}; reverse pick DD {rev[r_all][1]:+.1%} vs BASELINE8 {rev['BASELINE8'][1]:+.1%})")
     print(f"EXPAND UNIVERSE TO U12: {'YES' if expand else 'NO'} (U12 beats U8 in {uni_share[('U12', 'U8')]:.0%} of pairs; "
           f"reverse pick {r_all} [{uni.get(r_all)}]; U12 forward picks {wf_u12}/{len(wf)})")
 
-    summary = {"recommendation": rec, "near_tie": near, "best_overall": full.obj.idxmax(),
-               "adds_value": adds_value, "expand_u12": expand, "pbo": pbo["pbo"],
-               "dsr96": dsr96["dsr_pvalue"], "dsr809": dsr809["dsr_pvalue"], "reverse_pick": r_all,
-               "reverse_pick_deployable": r_dep, "wf": {k: list(v) for k, v in wf_stats.items()}}
+    summary = {"recommendation": rec, "near_tie": near, "best_overall": str(full["obj"].idxmax()),
+               "adds_value": bool(adds_value), "expand_u12": bool(expand), "pbo": float(pbo["pbo"]),
+               "dsr96": float(dsr96["dsr_pvalue"]), "dsr809": float(dsr809["dsr_pvalue"]), "reverse_pick": r_all,
+               "reverse_pick_deployable": r_dep,
+               "wf": {k: [float(x) for x in v] for k, v in wf_stats.items()}}
     (OUT / "summary.json").write_text(json.dumps(summary, separators=(",", ":")), encoding="utf-8")
 
     # Logged last, so a crash above can be fixed and rerun without spending the one final run.
