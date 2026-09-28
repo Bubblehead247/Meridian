@@ -271,17 +271,22 @@ def run_paper_session(
             continue
 
         # --- instantiate model and compute signals ---
-        try:
-            model = create_model(family, model_name)
-        except KeyError:
-            _skip("model not found in registry")
-            continue
+        if picks[family].get("retired"):
+            # Retired to research: the model no longer trades, anything still
+            # held is sold, and the sleeve's capital sits in the idle-cash sweep.
+            sigs = {sym: 0 for sym in symbols}
+        else:
+            try:
+                model = create_model(family, model_name)
+            except KeyError:
+                _skip("model not found in registry")
+                continue
 
-        try:
-            sigs = _today_signals(model, prices)
-        except Exception as exc:
-            _skip(f"signal error: {exc}")
-            continue
+            try:
+                sigs = _today_signals(model, prices)
+            except Exception as exc:
+                _skip(f"signal error: {exc}")
+                continue
 
         # --- position sizing: full sleeve weight (monitor-only families → 0) ---
         weight = live_pick_weight(family, present)

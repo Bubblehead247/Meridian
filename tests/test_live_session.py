@@ -597,3 +597,36 @@ def test_sleeves_outside_the_sweep_hold_no_sgov(monkeypatch, tmp_path):
     decision, book = _sweep_session(monkeypatch, tmp_path, "trend_following", _FlatModel)
     assert "SGOV" not in decision.target_shares
     assert "SGOV" not in book.get("trend_following", {})
+
+
+# --- retired sleeves (owner decision 2026-09-27) -----------------------------
+
+
+def _retired_session(monkeypatch, tmp_path, book=None):
+    import json
+    picks = {"mean_reversion": {"model": "m", "symbol": "SNOW", "retired": True}}
+    _patch_session(monkeypatch, picks)
+    # A retired sleeve must not consult its model, even one that would buy.
+    monkeypatch.setattr(live_runner, "create_model", lambda f, m: _FakeModel())
+    positions_path = tmp_path / "positions.json"
+    positions_path.write_text(json.dumps(book or {}))
+    broker = SimulatedBroker(cash=100_000.0, cost_bps=0.0)
+    for sym, qty in (book or {}).get("mean_reversion", {}).items():
+        broker.positions[sym] = qty
+    decisions = live_runner.run_paper_session(
+        broker, account_equity=100_000.0, positions_path=positions_path,
+        rebalance_schedule_path=tmp_path / "last_rebalance.json")
+    return decisions[0], json.loads(positions_path.read_text())
+
+
+def test_a_retired_sleeve_holds_its_capital_in_sgov(monkeypatch, tmp_path):
+    decision, book = _retired_session(monkeypatch, tmp_path)
+    assert decision.signals == {"SNOW": 0}
+    assert book["mean_reversion"]["SGOV"] == pytest.approx(150.0)
+    assert book["mean_reversion"].get("SNOW", 0.0) == 0.0
+
+
+def test_a_retired_sleeve_sells_what_it_still_holds(monkeypatch, tmp_path):
+    decision, book = _retired_session(monkeypatch, tmp_path, book={"mean_reversion": {"SNOW": 40.0}})
+    assert book["mean_reversion"].get("SNOW", 0.0) == 0.0
+    assert book["mean_reversion"]["SGOV"] == pytest.approx(150.0)

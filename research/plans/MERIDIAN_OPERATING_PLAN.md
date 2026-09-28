@@ -108,7 +108,17 @@ Sources: [Pod shop risk limits](https://hedgefundinterview.com/pod-shop-risk-lim
 [Incubator track records](https://www.investmentlawgroup.com/perspectives/launching-an-incubator-hedge-fund/) ·
 [Hedge funds vs the S&P in 2024](https://www.tipranks.com/news/hedge-funds-underperformed-the-bull-market-in-2024)
 
-## 6. What the owner decides
+## 6. Owner decisions (2026-09-27)
+
+- **Drawdown target: −15%**, today's level. The core book is sized to it.
+- **Single-stock sleeves retired** (breakouts/TRGP, mean_reversion/SNOW, pullback/WFRD):
+  `"retired": true` in `live_picks.json`. From the 9/28 session they never trade, and their
+  32.5% sits in SGOV. SVXY stays for now.
+- **Amended pod rules accepted** (§5): stops on alpha P&L at −5% (halve) and −7.5% (back to
+  shadow); 12 months or 30 trades of shadow before capital; ramp ⅓ → ⅔ → full.
+- Still open: switch timing for the core book, and whether pods hedge their beta.
+
+## 7. Original decision list
 
 1. The drawdown the core should target: about −15% (today), about −20%, or about −25%.
    Section 4 matches the baseline's risk; a different target rescales the core.

@@ -1,7 +1,9 @@
 {
   "breakouts": {
     "model": "turtle_ma_exit",
-    "symbol": "TRGP"
+    "symbol": "TRGP",
+    "retired": true,
+    "retired_note": "Retired to research 2026-09-27 by the owner: no honest edge (research/2026-09-strategy-review \u00a76). Capital held in SGOV."
   },
   "long_term_etf": {
     "model": "ma_bond_rotation_cs_b126",
@@ -9,7 +11,9 @@
   },
   "mean_reversion": {
     "model": "rsi_exhaustion",
-    "symbol": "SNOW"
+    "symbol": "SNOW",
+    "retired": true,
+    "retired_note": "Retired to research 2026-09-27 by the owner: no honest edge (research/2026-09-strategy-review \u00a76). Capital held in SGOV."
   },
   "momentum": {
     "model": "dual_momentum_long_only",
@@ -17,7 +21,9 @@
   },
   "pullback_continuation": {
     "model": "rsi_pullback",
-    "symbol": "WFRD"
+    "symbol": "WFRD",
+    "retired": true,
+    "retired_note": "Retired to research 2026-09-27 by the owner: no honest edge (research/2026-09-strategy-review \u00a76). Capital held in SGOV."
   },
   "sector_rotation": {
     "model": "relative_strength_b05",
