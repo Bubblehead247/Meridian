@@ -21,7 +21,8 @@ _MINI_HEIGHT  = 6
 #: Box-drawing chars aren't in cp1252, so plain print() (no `rich`) crashes on the
 #: default Windows console codepage. rich's own Console handles encoding itself,
 #: so this translation is only needed on the non-rich fallback path.
-_ASCII_SAFE = str.maketrans({"┤": "|", "└": "+", "─": "-", "╲": "\\", "╱": "/", "│": "|"})
+_ASCII_SAFE = str.maketrans({"┤": "|", "└": "+", "─": "-", "╲": "\\", "╱": "/", "│": "|",
+                              "—": "-", "→": "->"})
 
 
 def _weighted_returns(returns_by_sleeve: dict[str, tuple[pd.Series, float]]) -> pd.Series:
@@ -85,7 +86,9 @@ def _print_chart(
         from rich.console import Console
         from rich.text import Text
         console  = Console()
-        use_rich = True
+        # rich writes box-drawing chars as-is; on a cp1252 stream (a pipe, a
+        # scheduled job's log) that raises, so fall back to the ASCII path.
+        use_rich = "utf" in (getattr(console.file, "encoding", "") or "").lower()
     except ImportError:
         use_rich = False
 
@@ -103,7 +106,7 @@ def _print_chart(
     if use_rich:
         console.print(f"[bold white]{title}[/bold white]")
     else:
-        print(title)
+        print(title.translate(_ASCII_SAFE))
     print()
 
     for i, (row_str, tick) in enumerate(zip(rows, ticks, strict=False)):
@@ -184,6 +187,14 @@ def build_fund_returns(
         else:
             continue
 
+        if picks_cfg.get(family, {}).get("retired"):
+            # Retired sleeves hold cash (SGOV) live; charting their old picks'
+            # backtests would show the hindsight curve they were retired over.
+            # Price-only data here, so cash is a flat line.
+            spy = load_ohlcv("SPY", price_start)["close"]
+            out[family] = (pd.Series(0.0, index=spy.index), live_pick_weight(family, all_families))
+            continue
+
         try:
             model = create_model(family, model_name)
         except KeyError:
@@ -228,7 +239,7 @@ def show_fund_equity_chart(
         return
     eq = equity_curve(weighted)
     final = float(eq.iloc[-1]) * equity
-    title = f"Fund Equity — {symbol}  ($10k → {_fmt_dollar(final)})"
+    title = f"Fund Equity — {symbol}  ($10k -> {_fmt_dollar(final)})"
     _print_chart(eq, title=title, equity=equity, height=_CHART_HEIGHT)
 
 
@@ -246,9 +257,11 @@ def show_all_family_charts(
         final = float(eq.iloc[-1]) * equity
         pick  = picks_cfg.get(family, {})
         label = f"{pick.get('model','?')}/{pick.get('symbol','?')}"
+        if pick.get("retired"):
+            label += " - RETIRED, cash"
         title = (
             f"{family.upper()}  [{label}]  "
-            f"{weight:.0%} sleeve  ($10k → {_fmt_dollar(final)})"
+            f"{weight:.0%} sleeve  ($10k -> {_fmt_dollar(final)})"
         )
         _print_chart(eq, title=title, equity=equity, height=_MINI_HEIGHT)
 
@@ -260,7 +273,7 @@ def show_all_family_charts(
     final = float(eq.iloc[-1]) * equity
     _print_chart(
         eq,
-        title=f"COMBINED FUND  ($10k → {_fmt_dollar(final)})",
+        title=f"COMBINED FUND  ($10k -> {_fmt_dollar(final)})",
         equity=equity,
         height=_CHART_HEIGHT,
     )
