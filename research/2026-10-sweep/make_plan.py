@@ -72,6 +72,8 @@ plan = {
     "test_start": "2008-01-01",
     "test_end": "2026-06-26",
     "holdout_start": None,
+    "benchmark": "BASELINE8 (honest 8-sleeve fund) for the selection-value rule; SPY + IEF for the alpha the lab logs",
+    "pass_rule": {"type": "sweep", "t_alpha_min": None, "rules": "see decision_rules"},
     "objective": "CAGR after scaling toward T-bills (k <= 1, no leverage) so the worst drawdown is no deeper than -15% over the window",
     "gates": [
         "TREND10-EW-U5 must reproduce the Faber run (2007-05-01..2026-09-25): CAGR 5.2%, max DD -15.0%, Sharpe 0.66 (rounded)",
