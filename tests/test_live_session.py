@@ -630,3 +630,29 @@ def test_a_retired_sleeve_sells_what_it_still_holds(monkeypatch, tmp_path):
     decision, book = _retired_session(monkeypatch, tmp_path, book={"mean_reversion": {"SNOW": 40.0}})
     assert book["mean_reversion"].get("SNOW", 0.0) == 0.0
     assert book["mean_reversion"]["SGOV"] == pytest.approx(150.0)
+
+
+def test_a_sell_of_a_symbol_the_broker_does_not_hold_is_skipped(monkeypatch, tmp_path):
+    """Books count a buy placed after Friday's close; the broker won't have it until
+    Monday's open. A margin account would accept the sell and open a short on a
+    long-only fund, so the runner must not send it."""
+    import json
+
+    class _MarginBroker(SimulatedBroker):          # accepts sells it can't cover
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.sent = []
+
+        def market_order(self, symbol, shares, **kw):
+            self.sent.append((symbol, shares))
+            return super().market_order(symbol, shares, **kw)
+
+    _patch_session(monkeypatch, {"momentum": {"model": "m", "symbol": "AVGO"}})
+    monkeypatch.setattr(live_runner, "create_model", lambda f, m: _FlatModel())
+    positions_path = tmp_path / "positions.json"
+    positions_path.write_text(json.dumps({"momentum": {"AVGO": 0.2534}}))
+    broker = _MarginBroker(cash=100_000.0, cost_bps=0.0)   # holds no AVGO
+    live_runner.run_paper_session(broker, account_equity=100_000.0, positions_path=positions_path)
+    assert broker.sent == []
+    assert broker.positions.get("AVGO", 0.0) == 0.0
+    assert json.loads(positions_path.read_text())["momentum"]["AVGO"] == pytest.approx(0.2534)

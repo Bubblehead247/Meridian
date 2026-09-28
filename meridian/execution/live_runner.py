@@ -171,7 +171,8 @@ SELL_ROUNDING_TOL = 1e-6
 
 
 def _clamp_sell_to_held(broker: BaseBroker, symbol: str, net_qty: float) -> float:
-    """Trim a sell to the broker's holding when they differ only by rounding.
+    """Trim a sell to the broker's holding when they differ only by rounding,
+    and never sell a symbol the broker holds none of (0.0 = skip).
 
     The books keep 6 decimals; Alpaca keeps 9 and can hold 0.051938999 where
     the books say 0.051939. Selling the booked amount is then "insufficient qty
@@ -182,6 +183,13 @@ def _clamp_sell_to_held(broker: BaseBroker, symbol: str, net_qty: float) -> floa
         held = broker.get_position(symbol)
     except Exception:
         return net_qty
+    if held <= 0:
+        # Long-only: selling what the broker doesn't hold would open a short.
+        # It happens when the books count a buy that hasn't filled yet (an
+        # order placed after Friday's close, before Monday's open); the sell
+        # is skipped and retried next session, once the fill has landed.
+        print(f"  skipped sell: {symbol} {net_qty:+.4f} — the broker holds none")
+        return 0.0
     if 0 < held < -net_qty <= held + SELL_ROUNDING_TOL:
         return -held
     return net_qty
@@ -399,6 +407,8 @@ def run_paper_session(
 
         if net_qty < 0:
             net_qty = _clamp_sell_to_held(broker, sym, net_qty)
+            if net_qty == 0.0:
+                continue   # nothing held to sell: legs stay unapplied, retried next session
 
         try:
             real_fill = broker.market_order(sym, net_qty)
