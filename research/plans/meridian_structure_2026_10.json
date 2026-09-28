@@ -1,0 +1,30 @@
+{
+  "id": "meridian-structure-2026-10",
+  "written": "2026-09-27, before any of C1 or C2 was computed; C3 was seen in research/2026-09-returns-study (post-hoc)",
+  "hypothesis": "A simple core book can replace Meridian's eight sleeves without losing risk-adjusted performance (non-inferiority, not a skill claim).",
+  "benchmark": "BASELINE: honest fund B from research/2026-09-returns-study/step1_baseline.py (current weights; momentum on SPY QQQ IWM EFA EEM GLD IEF TLT; trend on SPY; single-stock sleeves in T-bills; SVXY vix_band; long_term_etf and sector_rotation as live).",
+  "candidates": {
+    "C1": "50% 60/40 SPY/IEF (monthly rebalance) + 25% long_term_etf live model (ma_bond_rotation_cs_b126 on QQQ IEF KMLM) + 25% T-bills",
+    "C2": "50% Faber 10-month rule on SPY EFA IEF GSG VNQ (as research/plans/faber_gtaa_5etf.json) + 25% long_term_etf live model + 25% 60/40 SPY/IEF",
+    "C3": "POST-HOC: current weights; sector_rotation, momentum and trend_following held (equal weight of their instruments) instead of timed; single-stock sleeves in T-bills; 5% cash in T-bills"
+  },
+  "configs": [{"candidate": "C1"}, {"candidate": "C2"}, {"candidate": "C3"}],
+  "data": "Total returns (adj_close), 10 bps per side, T-bills = ^IRX/252 lagged a day, long-only",
+  "test_start": "2011-01-01",
+  "test_end": "2026-06-26",
+  "holdout_start": null,
+  "periods": [["2011-01-01", "2015-12-31"], ["2016-01-01", "2020-12-31"], ["2021-01-01", "2026-06-26"]],
+  "pass_rule": {
+    "type": "non-inferiority",
+    "sharpe_margin": 0.05,
+    "max_drawdown_margin": 0.02,
+    "each_period": true,
+    "tie_break": "fewest sleeves, then highest full-period Sharpe",
+    "t_alpha_min": null
+  },
+  "honesty_note": "All of 2011-2026 was seen during 2026-09-27 research. This compares structures on known history; the live record after any switch is the real test.",
+  "consequences": {
+    "one_or_more_non_inferior": "Propose the winner as Meridian's core book at the owner's chosen drawdown target, retire the no-edge sleeves to research, and switch only with the owner's OK (at the ~10/11 review or earlier on explicit instruction).",
+    "none_non_inferior": "Keep the current structure; still retire the single-stock sleeves and SVXY if the owner agrees, since they showed no honest edge."
+  }
+}
