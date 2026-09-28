@@ -1,0 +1,31 @@
+{
+  "id": "structure-2008-check",
+  "written": "2026-09-28, prompted by Claude's monthly review finding F1. Written after returns-study step 4 (C1's 2008-inclusive figures were known), before any 2008-inclusive number for the 8-sleeve baseline was computed.",
+  "hypothesis": "At a matched -15% worst drawdown over 2008-01..2026-06, the C1 core earns at least as much as the honest 8-sleeve baseline (within 0.5%/yr). If it doesn't, the owner's decision to retire momentum, sector rotation and trend at the switch should be reopened.",
+  "benchmark": "BASELINE = honest 8-sleeve fund with the original weights HARD-CODED (not read from the allocation table): long_term_etf 25% (ma_bond_rotation_cs_b126 on QQQ IEF KMLM); momentum 15% (dual_momentum_long_only on SPY QQQ IWM EFA EEM GLD IEF TLT); sector_rotation 10% (relative_strength_b05 on the 11 SPDR sectors); trend_following 7.5% (ma_trend_long_only on SPY); volatility 5% (vix_band on SVXY with ^VIX); mean_reversion 15% + pullback 10% + breakouts 7.5% + cash reserve 5% in T-bills.",
+  "candidates": {
+    "C1": "50% 60/40 SPY/IEF + 25% long_term_etf (same model as the baseline) + 25% T-bills",
+    "C3": "POST-HOC: the baseline with sector_rotation, momentum and trend held equal-weight in their own instruments instead of timed"
+  },
+  "fairness": "On both sides the idle share of every timed sleeve earns T-bills (SVXY didn't exist until late 2011, so its sleeve is T-bills before that). KMLM doesn't exist before 2021, so long_term_etf rotates QQQ/IEF only until then in BOTH the baseline and C1.",
+  "data": "Total returns (adj_close), 10 bps per side, fills at the signal close, long-only; T-bills = ^IRX/252 lagged a day; daily fixed weights",
+  "test_start": "2008-01-01",
+  "test_end": "2026-06-26",
+  "holdout_start": null,
+  "configs": [{"candidate": "C1"}, {"candidate": "C3"}],
+  "pass_rule": {
+    "type": "matched-drawdown",
+    "budget": -0.15,
+    "method": "scale each portfolio with T-bills (k<1) or margin (k>1, borrowing at T-bill + spread) so its worst 2008-01..2026-06 drawdown equals the budget, as in returns-study step 4",
+    "borrow_spread_primary": 0.015,
+    "borrow_spread_sensitivity": 0.03,
+    "cagr_margin": 0.005,
+    "decision": "C1 is REAFFIRMED if CAGR(C1 at -15%) >= CAGR(baseline at -15%) - 0.5%/yr at the primary spread; otherwise REOPEN.",
+    "t_alpha_min": null
+  },
+  "also_reported": "unscaled CAGR/Sharpe/max DD 2008-2026 and by period (2008-10, 2011-15, 2016-20, 2021-26/06); exposure k each portfolio needs; each timed sleeve vs holding its own instruments in 2008-2010",
+  "consequences": {
+    "reaffirmed": "C1 goes to the ~10/11 review unchanged.",
+    "reopen": "Present the result to the owner: keeping some or all timing sleeves inside the core becomes the question. C1 stays unmerged either way; nothing live changes from this test."
+  }
+}
