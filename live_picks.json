@@ -5,6 +5,18 @@
     "retired": true,
     "retired_note": "Retired to research 2026-09-27 by the owner: no honest edge (research/2026-09-strategy-review \u00a76). Capital held in SGOV."
   },
+  "core_bonds": {
+    "model": "buy_and_hold",
+    "symbol": "IEF"
+  },
+  "core_equity": {
+    "model": "buy_and_hold",
+    "symbol": "SPY"
+  },
+  "core_tbills": {
+    "model": "buy_and_hold",
+    "symbol": "SGOV"
+  },
   "long_term_etf": {
     "model": "ma_bond_rotation_cs_b126",
     "symbol": "QQQ_IEF_KMLM"
@@ -17,7 +29,9 @@
   },
   "momentum": {
     "model": "dual_momentum_long_only",
-    "symbol": "AAPL_MSFT_AMZN_NVDA_GOOGL_META_JPM_XOM_LLY_UNH_AVGO_MA_V_HD_PG"
+    "symbol": "AAPL_MSFT_AMZN_NVDA_GOOGL_META_JPM_XOM_LLY_UNH_AVGO_MA_V_HD_PG",
+    "retired": true,
+    "retired_note": "Retired to research at the C1 switch by the owner's 2026-09-27 decisions (research/plans/MERIDIAN_OPERATING_PLAN.md): no honest edge over holding. Kept listed so any holding is sold."
   },
   "pullback_continuation": {
     "model": "rsi_pullback",
@@ -27,14 +41,20 @@
   },
   "sector_rotation": {
     "model": "relative_strength_b05",
-    "symbol": "SECTORS"
+    "symbol": "SECTORS",
+    "retired": true,
+    "retired_note": "Retired to research at the C1 switch by the owner's 2026-09-27 decisions (research/plans/MERIDIAN_OPERATING_PLAN.md): no honest edge over holding. Kept listed so any holding is sold."
   },
   "trend_following": {
     "model": "ma_trend_long_only",
-    "symbol": "XLK"
+    "symbol": "XLK",
+    "retired": true,
+    "retired_note": "Retired to research at the C1 switch by the owner's 2026-09-27 decisions (research/plans/MERIDIAN_OPERATING_PLAN.md): no honest edge over holding. Kept listed so any holding is sold."
   },
   "volatility": {
     "model": "vix_band",
-    "symbol": "SVXY_^VIX"
+    "symbol": "SVXY_^VIX",
+    "retired": true,
+    "retired_note": "Retired to research at the C1 switch by the owner's 2026-09-27 decisions (research/plans/MERIDIAN_OPERATING_PLAN.md): no honest edge over holding. Kept listed so any holding is sold."
   }
 }

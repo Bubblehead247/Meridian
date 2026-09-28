@@ -15,6 +15,7 @@ from meridian.families.base import (
 # Side-effect imports: loading each active family's models registers them in the registry
 # (mirrors estimators/__init__), so the registry is populated on package import.
 from meridian.families.breakouts import models as _breakouts_models  # noqa: F401
+from meridian.families.core import models as _core_models  # noqa: F401
 from meridian.families.long_term_etf import models as _long_term_etf_models  # noqa: F401
 from meridian.families.mean_reversion import models as _mean_reversion_models  # noqa: F401
 from meridian.families.momentum import models as _momentum_models  # noqa: F401

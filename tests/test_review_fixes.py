@@ -25,6 +25,21 @@ from meridian.execution import live_runner
 from meridian.execution.broker import BaseBroker, SimulatedBroker
 
 
+
+@pytest.fixture(autouse=True)
+def _mechanism_tests_use_the_research_allocation():
+    """These tests exercise sizing/netting/band/sweep mechanics with the original
+    9-sleeve weights. The live table is now the C1 core (tests/test_allocation.py
+    covers it); the shared dict is swapped in place so every importer sees it."""
+    from meridian.portfolio import allocation
+    live = allocation.SLEEVE_ALLOCATIONS
+    saved = dict(live)
+    live.clear()
+    live.update(allocation.RESEARCH_SLEEVE_ALLOCATIONS)
+    yield
+    live.clear()
+    live.update(saved)
+
 class _FakeModel:
     """Single-asset model that always emits a long signal."""
 
@@ -510,7 +525,8 @@ def test_the_docs_do_not_claim_nine_active_families():
     """
     from meridian.families.registry import list_families
 
-    assert len(list_families()) == 8
+    strategy_families = [f for f in list_families() if not f.startswith("core_")]
+    assert len(strategy_families) == 8   # plus the three held core-book sleeves
     for name in ("CLAUDE.md", "PLAN.md", "README.md"):
         try:
             text = _doc(name)

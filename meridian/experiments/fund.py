@@ -15,6 +15,7 @@ from meridian.families import create_model, list_models
 from meridian.pipeline import run_pipeline
 from meridian.pipeline.records import load_records
 from meridian.portfolio import MonthlyReview, StrategyLedger, run_monthly_review, seed_ledgers
+from meridian.portfolio.allocation import RESEARCH_SLEEVE_ALLOCATIONS
 from meridian.portfolio.ledger import STAGES
 
 _STAGE_RANK: dict[str, int] = {s: i for i, s in enumerate(STAGES)}
@@ -82,7 +83,7 @@ def run_fund(
     held at their seeded research stage. When ``regime_frame`` is supplied, each model's
     positions are gated to its permission rule before scoring.
     """
-    ledgers = seed_ledgers(equity)
+    ledgers = seed_ledgers(equity, allocations=RESEARCH_SLEEVE_ALLOCATIONS)
     scorecards: dict[str, dict] = {}
     sleeve_returns: dict[str, pd.Series] = {}
     for led in ledgers:
@@ -131,7 +132,7 @@ def run_cs_fund(
     """
     from meridian.pipeline import run_universe_pipeline
 
-    ledgers = seed_ledgers(equity)
+    ledgers = seed_ledgers(equity, allocations=RESEARCH_SLEEVE_ALLOCATIONS)
     scorecards: dict[str, dict] = {}
     sleeve_returns: dict[str, pd.Series] = {}
     basket = "_".join(sorted(prices_by_symbol))

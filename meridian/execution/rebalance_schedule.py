@@ -22,8 +22,8 @@ def _key(family: str, symbol: str) -> str:
     return f"{family}/{symbol}"
 
 
-def load_last_rebalance(path: Path = REBALANCE_SCHEDULE_FILE) -> dict[str, str]:
-    """Return {"family/symbol": "YYYY-MM-DD"}; {} when missing/corrupt."""
+def load_last_rebalance(path: Path = REBALANCE_SCHEDULE_FILE) -> dict:
+    """Return {"family/symbol": "YYYY-MM-DD" or {"date", "weight"}}; {} when missing/corrupt."""
     if not path.exists():
         return {}
     try:
@@ -39,12 +39,26 @@ def save_last_rebalance(data: dict[str, str], path: Path = REBALANCE_SCHEDULE_FI
     write_json_atomic(path, data)
 
 
+def _entry(data: dict, family: str, symbol: str) -> tuple[str | None, float | None]:
+    """(date, weight) of the last stamp; a legacy entry is a bare date string."""
+    raw = data.get(_key(family, symbol))
+    if isinstance(raw, dict):
+        return raw.get("date"), raw.get("weight")
+    return raw, None
+
+
 def is_rebalance_due(
-    family: str, symbol: str, today: date, path: Path = REBALANCE_SCHEDULE_FILE
+    family: str, symbol: str, today: date, path: Path = REBALANCE_SCHEDULE_FILE,
+    *, weight: float | None = None,
 ) -> bool:
-    """True if this position hasn't been resized yet this calendar month."""
-    last = load_last_rebalance(path).get(_key(family, symbol))
+    """True if this position hasn't been resized this calendar month, or if its
+    sleeve's allocation changed since it was (an allocation change is a decision,
+    not drift — without this, switching allocation mid-month would leave the old
+    sizes in place until the next month)."""
+    last, last_weight = _entry(load_last_rebalance(path), family, symbol)
     if not last:
+        return True
+    if weight is not None and (last_weight is None or abs(last_weight - weight) > 1e-9):
         return True
     try:
         last_date = date.fromisoformat(last)
@@ -54,9 +68,10 @@ def is_rebalance_due(
 
 
 def record_rebalance(
-    family: str, symbol: str, today: date, path: Path = REBALANCE_SCHEDULE_FILE
+    family: str, symbol: str, today: date, path: Path = REBALANCE_SCHEDULE_FILE,
+    *, weight: float | None = None,
 ) -> None:
-    """Stamp this position as considered-for-resize this month.
+    """Stamp this position as considered-for-resize this month (at this weight).
 
     Called once the monthly gate opens, regardless of whether the existing
     rebalance band ends up suppressing the actual order — the point is "this
@@ -64,5 +79,6 @@ def record_rebalance(
     the band."
     """
     data = load_last_rebalance(path)
-    data[_key(family, symbol)] = today.isoformat()
+    data[_key(family, symbol)] = (
+        today.isoformat() if weight is None else {"date": today.isoformat(), "weight": weight})
     save_last_rebalance(data, path)

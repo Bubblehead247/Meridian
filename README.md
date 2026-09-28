@@ -32,7 +32,7 @@ meridian gauntlet --symbol SPY                   # rank EVERY strategy on a symb
 meridian gauntlet --symbols XLK XLF XLE          # rank cross-sectional models on a basket
 meridian pipeline mean_reversion/zscore_reversion --symbols SPY QQQ   # one strategy, many symbols
 meridian fund --universe QQQ --equity 100000     # whole fund lifecycle -> month-end report
-meridian list models                             # the 52 family/model names
+meridian list models                             # the 55 family/model names
 ```
 
 The config-driven research commands are also there (reproducible from the YAML alone):

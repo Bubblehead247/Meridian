@@ -15,6 +15,21 @@ from meridian.execution.broker import SimulatedBroker
 from meridian.portfolio.allocation import SLEEVE_ALLOCATIONS
 from meridian.portfolio.live_picks import live_pick_weight
 
+
+@pytest.fixture(autouse=True)
+def _mechanism_tests_use_the_research_allocation():
+    """These tests exercise sizing/netting/band/sweep mechanics with the original
+    9-sleeve weights. The live table is now the C1 core (tests/test_allocation.py
+    covers it); the shared dict is swapped in place so every importer sees it."""
+    from meridian.portfolio import allocation
+    live = allocation.SLEEVE_ALLOCATIONS
+    saved = dict(live)
+    live.clear()
+    live.update(allocation.RESEARCH_SLEEVE_ALLOCATIONS)
+    yield
+    live.clear()
+    live.update(saved)
+
 # --- weighting rule -------------------------------------------------------
 
 def test_live_pick_weight_primary_and_monitor():
