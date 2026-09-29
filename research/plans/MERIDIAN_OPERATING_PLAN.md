@@ -148,7 +148,10 @@ Sources: [Pod shop risk limits](https://hedgefundinterview.com/pod-shop-risk-lim
   - Alpha and the −5% / −7.5% stops are measured on a virtual hedge (pod return − beta × benchmark,
     already in the pod plans), so no real hedge is needed.
   - Long/short ideas (e.g. post-earnings drift) must be tested as long-only versions.
-  - Inverse ETFs (e.g. SH) are treated as shorting too unless the owner says otherwise.
+  - **Inverse ETFs allowed (owner, 2026-09-29) with at most a one-session hold**; no −2x/−3x
+    versions. Not usable as a lasting pod hedge under that cap (daily round-trips cost more than
+    plausible alpha). Any use needs its own pre-registered test with daily costs, and a code guard
+    that closes the position after one session. Nothing built.
 - Still open: switch timing for the core book, the exact core/pod risk split, and a judging
   criterion for the Faber shadow.
 
