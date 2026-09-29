@@ -1,0 +1,100 @@
+{
+ "id": "trend6-small-mid-caps",
+ "written": "2026-09-29, before any result of these universes was computed (owner asked whether small/mid caps help).",
+ "hypothesis": "Adding a mid-cap ETF (IJH, S&P 400) and a small-cap value ETF (IJS, S&P 600 Value) as trend 6 sleeves improves return at the -15% drawdown budget.",
+ "rule": "Trend 6 as built: each ETF gets an equal share, held while its dividend-adjusted month-end price is above the mean of its last 6 month-end prices, otherwise that share is in T-bills. 10 bps per side, month-end signals traded at that close.",
+ "benchmark": "BASE = TREND6-EW-U8 (SPY QQQ IWM EFA EEM GLD IEF TLT, 12.5% each)",
+ "configs": [
+  {
+   "id": "BASE",
+   "etfs": [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "EFA",
+    "EEM",
+    "GLD",
+    "IEF",
+    "TLT"
+   ]
+  },
+  {
+   "id": "U10",
+   "etfs": [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "EFA",
+    "EEM",
+    "GLD",
+    "IEF",
+    "TLT",
+    "IJH",
+    "IJS"
+   ],
+   "decision": true
+  },
+  {
+   "id": "U9-IJH",
+   "etfs": [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "EFA",
+    "EEM",
+    "GLD",
+    "IEF",
+    "TLT",
+    "IJH"
+   ],
+   "sensitivity": true
+  },
+  {
+   "id": "U9-IJS",
+   "etfs": [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "EFA",
+    "EEM",
+    "GLD",
+    "IEF",
+    "TLT",
+    "IJS"
+   ],
+   "sensitivity": true
+  }
+ ],
+ "data": "Total returns (adj_close), T-bills = ^IRX/252 lagged a day, long-only, no leverage",
+ "test_start": "2008-01-01",
+ "test_end": "2026-06-26",
+ "holdout_start": null,
+ "periods": [
+  [
+   "2008-01-01",
+   "2010-12-31"
+  ],
+  [
+   "2011-01-01",
+   "2015-12-31"
+  ],
+  [
+   "2016-01-01",
+   "2020-12-31"
+  ],
+  [
+   "2021-01-01",
+   "2026-06-26"
+  ]
+ ],
+ "gate": "BASE must reproduce the sweep's TREND6-EW-U8: 7.0% CAGR, -9.6% max DD (2008-01..2026-06)",
+ "pass_rule": {
+  "t_alpha_min": null,
+  "adopt_U10_if": "its return at -15% (k <= 1, rest T-bills) beats BASE by more than 0.5%/yr over 2008-2026/06 AND it has the higher CAGR in at least 3 of the 4 periods AND its full-period max DD is no more than 2 points deeper",
+  "otherwise": "keep U8; U9 variants are reported, not decided on"
+ },
+ "consequences": {
+  "adopt": "Propose adding IJH and IJS sleeves to the trend 6 branch (not live) for the owner's OK.",
+  "keep": "No change; answer: small/mid caps don't improve the core."
+ }
+}
