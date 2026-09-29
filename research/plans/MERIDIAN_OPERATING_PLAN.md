@@ -141,7 +141,16 @@ Sources: [Pod shop risk limits](https://hedgefundinterview.com/pod-shop-risk-lim
      gate) and `pod_dualmom_forward.json`. The shadow is live on master from the 9/30 close. Judged at
      12 months or 30 trades, whichever is later.
   3. C1 retired: tag `archive/c1-core-2026-10`, branch deleted.
-- Still open: switch timing for the core book, and whether pods hedge their beta.
+- **2026-09-29 owner decision: no shorting.** Pods are never hedged with short positions and stay
+  long-only (the live no-short guard already blocks accidental shorts). Consequences:
+  - A funded pod's market exposure counts inside the −15% budget; the core shrinks in proportion
+    when a pod is funded or ramps.
+  - Alpha and the −5% / −7.5% stops are measured on a virtual hedge (pod return − beta × benchmark,
+    already in the pod plans), so no real hedge is needed.
+  - Long/short ideas (e.g. post-earnings drift) must be tested as long-only versions.
+  - Inverse ETFs (e.g. SH) are treated as shorting too unless the owner says otherwise.
+- Still open: switch timing for the core book, the exact core/pod risk split, and a judging
+  criterion for the Faber shadow.
 
 ## 7. Original decision list
 
